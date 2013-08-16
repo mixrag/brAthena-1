@@ -1,0 +1,212 @@
+//    ________________________________________________________
+//   /                                                        \
+//   |       _           _   _   _                            |
+//   |      | |__  _ __ / \ | |_| |__   ___ _ __   __ _       |
+//   |      | '_ \| '__/ _ \| __| '_ \ / _ \ '_ \ / _` |      |
+//   |      | |_) | | / ___ \ |_| | | |  __/ | | | (_| |      |
+//   |      |_.__/|_|/_/   \_\__|_| |_|\___|_| |_|\__,_|      |
+//   |                                                        |
+//   |                    brAthena Script                     |
+//   |--------------------------------------------------------|
+//   | Nome do Script: c_tower_p.txt                          |
+//   |--------------------------------------------------------|
+//   | Criado por: brA Dev. Team                              |
+//   |--------------------------------------------------------|
+//   | Versões brA: 1.1                                       |
+//   |--------------------------------------------------------|
+//   | Descrição:  Torre do Relógio Modo Pesadelo.            |
+//   |--------------------------------------------------------|
+//   | Changelog:                                             |
+//   | 1.0 Criação [Megasantos]                               |
+//   | 1.1 Tradução PT-BR [Holy]                              |
+//   |--------------------------------------------------------|
+//   | - Anotações                                            |
+//   \________________________________________________________/
+
+c_tower1,232,222,5	script	Benjamin#ct	968,{
+
+	mes "[Benjamin]";
+	mes "^FF0000O que sabe^000000sobre a torre";
+	mes "do relógio no modo pesadelo?";
+	next;
+	mes "[Benjamin]";
+	mes "Eu vim de lá.";
+	mes "Mas, já faz um tempo desde que cheguei até aqui.";
+	next;
+	mes "[Benjamin]";
+	mes "Lá o tempo continua contando e os monstros permanecem.";
+	mes "Mesmo com a idade e o ambiente ao seu redor se modificando.";
+	next;
+	mes "[Benjamin]";
+	mes "Ir até lá pode te trazer problemas.";
+	mes "E por favor, não faça perguntas.";
+	next;
+	switch(select("Não fazer perguntas.:2° Andar da Torre do Relógio ( Pesadelo ):3° Andar da Torre do Relógio ( Pesadelo )")) {
+	case 1:
+		mes "[Benjamin]";
+		mes "Hugh... Bem pensado.";
+		mes "Experimente enfrentar novos monstros e conhecer novos itens";
+		mes "em lugares menos perigosos.";
+		mes "Vamos lá, vá para um lugar seguro.";
+		close;
+		return;
+		break;
+	case 2:
+		mes "[Benjamin]";
+		mes "É arriscado.";
+		next;
+		mes "[Benjamin]";
+		mes "Muito perigoso ";
+		mes "E existe uma taxa de ^0000FF10000z^000000.";
+		next;
+		switch(select("Sair.:Pagar 10000z.:Como?")) {
+		case 1:
+			mes "[Benjamin]";
+			mes "Bem pensado!";
+			mes "Experimente enfrentar novos monstros e conhecer novos itens";
+			mes "em lugares menos perigosos.";
+			mes "Vamos lá, vá para um lugar seguro.";
+			close;
+			return;
+			break;
+		case 2:
+			if (Zeny < 10000) {
+				mes "[Benjamin]";
+				mes "Não está faltando os zenys?";
+				mes "É um lugar perigoso.";
+				mes "^0000FF10000z^000000, não deixarei que você";
+				mes "vá até lá sem que pague o valor necessário.";
+				close;
+				return;
+			}
+			set zeny, zeny - 10000;
+			mes "[Benjamin]";
+			mes "Até mais...";
+			close2;
+			warp "c_tower2_",268,26;
+			break;
+		case 3:
+			mes "[Benjamin]";
+			mes "Lá é um lugar perigoso para todos os aventureiros que queiram frequentá-lo, e a segurança só é concedida caso o valor necessário seja pago.";
+			emotion 4;
+			close;
+			break;
+		}
+		break;
+	case 3:
+		mes "[Benjamin]";
+		mes "É arriscado.";
+		next;
+		mes "[Benjamin]";
+		mes "Muito perigoso ";
+		mes "E existe uma taxa de ^0000FF10000z^000000.";
+		next;
+		switch(select("Sair.:Pagar 10000z.:Como?")) {
+		case 1:
+			mes "[Benjamin]";
+			mes "Bem pensado!";
+			mes "Experimente enfrentar novos monstros e conhecer novos itens";
+			mes "em lugares menos perigosos.";
+			mes "Vamos lá, vá para um lugar seguro.";
+			close;
+			break;
+		case 2:
+			if (Zeny < 10000) {
+				mes "[Benjamin]";
+				mes "Não está faltando os zenys?";
+				mes "É um lugar perigoso.";
+				mes "^0000FF10000z^000000, não deixarei que você";
+				mes "vá até lá sem que pague o valor necessário.";
+				close;
+				return;
+			}
+			set zeny, zeny - 10000;
+			mes "[Benjamin]";
+			mes "Até mais...";
+			close2;
+			warp "c_tower3_",65,147;
+			break;
+		case 3:
+			mes "[Benjamin]";
+			mes "Lá é um lugar perigoso para todos os aventureiros que queiram frequentá-lo, e a segurança só é concedida caso o valor necessário seja pago.";
+			emotion 4;
+			close;
+		}
+		break;
+	}
+	return;
+}
+
+
+c_tower2_,274,26,3	script	Benjamin#ct1	962,{
+
+	mes "[Benjamin]";
+	mes "Provavelmente nunca nos encontramos, não foi?";
+	next;
+	mes "[Benjamin]";
+	mes "Então irei te orientar.";
+	next;
+	switch(select("Informações sobre o lugar.:Sair.")) {
+	case 1:
+		mes "[Benjamin]";
+		mes "Você aparentemente acabou encontrando dificuldades, acha que consegue continuar sozinh"+((Sex) ? "o":"a")+"";
+		next;
+		mes "[Benjamin]";
+		mes "Também estou assim.";
+		mes "Ainda não tenho um propósito aqui.";
+		next;
+		mes "[Benjamin]";
+		mes "Por favor, aproveite e saia enquanto é tempo.";
+		next;
+		switch(select("Ficar um pouco mais.:Sair.")) {
+		case 1:
+			mes "[Benjamin]";
+			mes "Como você gostou daqui, então não há problema.";
+			close;
+			break;
+		case 2:
+			mes "[Benjamin]";
+			mes "Um feitiço está sendo pronto.";
+			mes "Bebidas misturadas são adicionadas ao copo e mexidas lentamente.";
+			mes "Seu efeito está completo !";
+			close2;
+			warp "c_tower1",235,223;
+			break;
+		}
+		break;
+	case 2:
+		mes "[Benjamin]";
+		mes "É hora de dizer.";
+		mes "Qual sua bebida favorita?";
+		next;
+		mes "[Benjamin]";
+		mes "Um feitiço está sendo pronto.";
+		mes "Bebidas misturadas são adicionadas ao copo e mexidas lentamente.";
+		mes "Seu efeito está completo !";
+		close2;
+		warp "c_tower1",235,223;
+		break;
+	}
+	return;
+}
+
+c_tower3_,59,148,5	duplicate(Benjamin#ct1)	Benjamin#ct2	574
+
+// c_tower2_
+c_tower2_,0,0,0,0	monster	Rideword - Pesadelo	2478,2,300000,0,0
+c_tower2_,0,0,0,0	monster	Rideword - Pesadelo	2478,2,120000,0,0
+c_tower2_,0,0,0,0	monster	Rideword - Pesadelo	2478,1,60000,0,0
+c_tower2_,0,0,0,0	monster	Mímico - Pesadelo	2479,3,5000,0,0
+c_tower2_,0,0,0,0	monster	Grande Ben	2916,40,5000,0,0
+c_tower2_,0,0,0,0	monster	Neo Punk	2919,40,5000,0,0
+c_tower2_,0,0,0,0	monster	Cronômetro	2918,1,5000 0,0
+c_tower2_,0,0,0,0	monster	Ancião Arcaico	2920,2,3600000,0,0
+
+// c_tower3_
+c_tower3_,0,0,0,0	monster	Mímico - Pesadelo	2479,8,5000,0,0
+c_tower3_,0,0,0,0	monster	Rideword - Pesadelo	2478,8,5000,0,0
+c_tower3_,0,0,0,0	monster	Grande Sino	2917,110,5000,0,0
+c_tower3_,0,0,0,0	monster	Cronômetro	2918,3,5000,0,0
+c_tower3_,0,0,0,0	monster	Visconde Coruja	2921,1,5000,0,0
+c_tower3_,0,0,0,0	monster	Mestre do Tempo	3074,1,5000,0,0
+c_tower3_,0,0,0,0	monster	Marquês Coruja	2923,1,5000,0,0

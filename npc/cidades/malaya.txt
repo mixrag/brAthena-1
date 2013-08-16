@@ -1,0 +1,2472 @@
+//    ________________________________________________________
+//   /                                                        \
+//   |       _           _   _   _                            |
+//   |      | |__  _ __ / \ | |_| |__   ___ _ __   __ _       |
+//   |      | '_ \| '__/ _ \| __| '_ \ / _ \ '_ \ / _` |      |
+//   |      | |_) | | / ___ \ |_| | | |  __/ | | | (_| |      |
+//   |      |_.__/|_|/_/   \_\__|_| |_|\___|_| |_|\__,_|      |
+//   |                                                        |
+//   |                    brAthena Script                     |
+//   |--------------------------------------------------------|
+//   | Nome do Script: malaya.txt                             |
+//   |--------------------------------------------------------|
+//   | Criado por: brA Dev. Team                              |
+//   |--------------------------------------------------------|
+//   | Versões brA: 1.1                                       |
+//   |--------------------------------------------------------|
+//   | Descrição: NPCs Porto de Malaya.                       |
+//   |--------------------------------------------------------|
+//   | Changelog:                                             |
+//   | 1.0 Primeira versão [Megasantos]                       |
+//   | 1.1 Tradução PT-BR & Atualização [Holy]                |
+//   |--------------------------------------------------------|
+//   | - Anotações                                            |
+//   \________________________________________________________/
+
+Antiga coordenada: alberta (237,71)
+alberta,196,202,3	script	Tripulante#alberta	100,{
+	mes "[Tripulante]";
+	mes "Ei!";
+	mes "São 10,000 Zeny para ir até o Porto de Malaya. Está interessad"+((Sex) ? "o":"a")+" ?";
+	next;
+	switch(select("Sobre o Porto de Malaya:Ir para o Porto de Malaya:Cancelar")) {
+		case 1:
+			mes "[Tripulante]";
+			mes "O Porto de Malaya é um pequeno vilarejo que você pode ser acessado através da navegação a suoeste de Alberta.";
+			next;
+			mes "Eu não posso visitar o vilarejo, eu tive alguns problemas lá, mas agora parece que está tudo bem!";
+			next;
+			mes "Não sei ao certo, mas aqui era um vilarejo confortável e aconchegante.";
+			next;
+			mes "Eu achava que nunca mais teria que voltar para Alberta.";
+			next;
+			mes "Tenho certeza de que você se sentirá.";
+			close;
+	
+		case 2:
+			mes "[Tripulante]";
+			if(Zeny > 10000) {
+			mes "Ótimo!";
+			mes "Rumo ao Porto de Malaya!!";
+			close2;
+			warp "malaya",271,55;
+			} else {
+			mes "Desculpe, mas você não possui a quantia necessária em Zenys.";
+			}
+			end;
+
+		case 3:
+			mes "[Tripulante]";
+			mes "Hoje em dia os aventureiros estão sempre ocupados. Volte quando tiver tempo para que possamos ir visitar Malaya Juntos.";
+			close;
+	}
+}
+
+malaya,276,55,4	script	Tripulante#malaya	100,{
+	mes "[Tripulante]";
+	mes "Eu acho que o vilarejo está cheio. Gostou da sua visita? Existem sempre barcos que vão até Alberta, o que quer fazer?";
+	next;
+	switch(select("Retornar:Não retornar")) {
+		case 1:
+			mes "[Tripulante]";
+			mes "Ótimo! Agora deixe me levá-lo para Alberta!!";
+			close2;
+			warp "alberta",239,68;
+			end;
+
+		case 2:
+			mes "[Tripulante]";
+			mes "Está bem. Volte a falar comigo quando quiser voltar para Alberta.";
+			close;
+	}
+}
+	
+malaya,270,59,4	script	Guarda do Porto#ma03	570,{
+
+	if(MALAYA_1QUE < 2) {
+		emotion 19;
+		mes "[Guarda do Porto]";
+		mes "O vilarejo está caótico esses dias. Há algum problema em estar aqui fora ?";
+		close;
+	}
+		if(MALAYA_1QUE < 6) {
+		mes "[Guarda do Porto]";
+		emotion 22;
+		mes "O vilarejo está um pouco estável no momento, mas tenha cuidado ao andar por aqui a noite.";
+		close;
+	}
+	switch(rand(1,2)) {
+	case 1:
+		if($MalayaName$[3] != "" && $MalayaName$[3] != strcharinfo(0)) {
+			mes "[港の警備隊員]";
+			mes $MalayaName$[3];
+			mes "という冒険者が、";
+			mes "ブワヤに捕まったけど";
+			mes "無事に帰って来たらしいです。";
+			mes "すごい実力を持っているみたいですね。";
+			close;
+		}
+	case 2:
+		emotion 23;
+		mes "[港の警備隊員]";
+		mes "うん!!　港は以上なし!!";
+		next;
+		mes "[港の警備隊員]";
+		mes "ん？　・なたでしたか。";
+		mes "びっくりした。";
+		mes "隊長かと思いましたよ。";
+		next;
+		mes "[港の警備隊員]";
+		mes "・！　そうだ！";
+		mes "旅行者に知らせている";
+		mes "通達が・ります。";
+		next;
+		menu "どんな通達ですか？",-;
+		mes "[港の警備隊員]";
+		mes "夜にモンスターがうろついているので";
+		mes "気を付けろとのことです。";
+		next;
+		mes "[港の警備隊員]";
+		mes "特にワクワクという";
+		mes "モンスターが頻繁に出没するので";
+		mes "注意しろとも言われました。";
+		next;
+		if(select("わかった","対処方法はないのか？")==1) {
+			mes "[港の警備隊員]";
+			mes "夜には気を付けて！";
+			close;
+		}
+		mes "[港の警備隊員]";
+		mes "ワクワクの羽の音が";
+		mes "遠くから聞こえたら急いで周辺の建物に";
+		mes "入るようにした方がいいですよ。";
+		next;
+		emotion 20;
+		mes "[港の警備隊員]";
+		mes "だけど、羽の音が小さく聞こえたり";
+		mes "ほとんど聞こえなかったら……。";
+		mes "襲ってくる直前らしいですよ。";
+		mes "・とは幸運を祈るしか・りません。";
+		close;
+	}
+}
+
+malaya,257,58,6	script	Motorista do Jipe#09	582,{
+	if(MALAYA_1QUE < 2) {
+		mes "[Motorista do Jipe]";
+		mes "...Você é "+((Sex) ? "um":"uma")+" turista... Não saia andando para qualquer canto...";
+		close;
+	}
+	if(MALAYA_1QUE < 6) {
+		mes "[Motorista do Jipe]";
+		mes "A cidade ainda é bastante perigosa. Melhor não tocar em nada até que tudo esteja calmo.";
+		close;
+	}
+	mes "[ジプニードライバー]";
+	mes "初めまして、";
+	mes "ジプニーを運転している";
+	mes "^1561EAグラマ^000000です。";
+	next;
+	callfunc "MalayaJeepney",9;
+	end;
+}
+
+malaya,304,100,4	script	Neta do Homem Velho	576,{
+	if(MALAYA_1QUE < 6) {
+	mes "- Ele parece receioso com você. -";
+	close;
+  }
+  mes "[Neta do Homem Velho]";
+	mes "お爺ちゃんはバコナワを";
+	mes "おとなしくできると";
+	mes "信じています。";
+	mes "本当にできるんですかね？";
+	close;
+}
+
+ma_in01,125,107,3	script	Fantasma Diwata#mal	1752,4,4,{
+	end;
+	OnTouch:
+	switch(MALAYA_2QUE) {
+	case 1:
+		mes "‐部屋の隅に黒い何かが";
+		mes "　うごめいている……";
+		next;
+		mes "‐よく見ると、";
+		mes "　人の形をしている……！‐";
+		next;
+		menu "で、出たーーー!!",-,"誰だ!!",-;
+		cutin "malaya_diwata01.bmp",2;
+		mes "‐少女の姿をした黒いそれは、";
+		mes "　こちらに気付くと、";
+		mes "　苛立たしげに睨みつけてきた‐";
+		next;
+		mes "[ディワタ]";
+		mes "……うるさい……";
+		next;
+		mes "‐全身黒ずくめで赤い瞳をした";
+		mes "　した少女……";
+		mes "　ペドロの言っていた悪霊は、";
+		mes "　この少女のことだろう‐";
+		next;
+		mes "[ディワタ]";
+		mes "出て行け!!";
+		next;
+		menu "待って！　話がしたい！",-;
+		mes "[ディワタ]";
+		mes "……お前らと話なんかない。";
+		next;
+		menu "お前ら？",-;
+		cutin "malaya_ghost01.bmp",4;
+		mes "‐振り向くと見覚えの・る霊たちが";
+		mes "　こちらに向かって歩いて来ている‐";
+		next;
+		menu "・の時の……",-;
+		cutin "malaya_ghost02.bmp",4;
+		mes "‐振り向いて、霊に歩み寄ると";
+		mes "　町で遭遇した時と同じように";
+		mes "　彼らは怯えはじめた‐";
+		next;
+		cutin "malaya_diwata01.bmp",2;
+		mes "[ディワタ]";
+		mes "……怯えている？";
+		mes "なぜ……";
+		next;
+		mes "[ディワタ]";
+		mes "……いや、そんなの関係ない！";
+		mes "お前も一緒に消えろ!!";
+		next;
+		cutin "malaya_diwata01.bmp",255;
+		mes "‐部屋に少女の声が響くと";
+		mes "　不思議な力で";
+		mes "　外に追い出されてしまった‐";
+		setquest 7396;
+		delquest 7395;
+		set MALAYA_2QUE,2;
+		close2;
+		sc_end SC_BLIND;
+		warp "malaya",324,66;
+		end;
+	case 4:
+		mes "‐ディワタが鋭い目つきで";
+		mes "　こちらを見つめている。";
+		mes "　用意した花束を……";
+		cutin "malaya_diwata01.bmp",2;
+		next;
+		switch(select("正面からさっと手渡す","床に置いてそっと押し出す","武器代わりにして叩く")) {
+		case 1:
+			mes "‐花束をさっと手渡すと彼女は、";
+			mes "　突然の贈り物に少し顔を赤らめ";
+			mes "　動揺しはじめた‐";
+			break;
+		case 2:
+			mes "‐床に花を置き彼女の方へ向けると";
+			mes "　彼女は何がおきているかわからず";
+			mes "　明らかに戸惑いはじめた‐";
+			break;
+		case 3:
+			mes "[ディワタ]";
+			mes "痛っ！";
+			mes "ひどい……。";
+			mes "どうしてそういう事するの？";
+			mes "信じられない！";
+			mes "早く消えてー！";
+			next;
+			cutin "malaya_diwata01.bmp",255;
+			mes "‐部屋に少女の声が響くと";
+			mes "　不思議な力で";
+			mes "　外に追い出されてしまった‐";
+			close2;
+			warp "malaya",324,66;
+			end;
+		}
+		next;
+		cutin "malaya_diwata02.bmp",2;
+		mes "[ディワタ]";
+		mes "花……すごい！　きれい……。";
+		next;
+		cutin "malaya_diwata01.bmp",2;
+		mes "[ディワタ]";
+		mes "これは……どういうつもり!?";
+		mes "・なたは敵ではないってこと？";
+		next;
+		mes "[ディワタ]";
+		mes "・れ？　良く見たら・なた、";
+		mes "普通の人間なのね。";
+		mes "……は・～";
+		mes "・の悪霊ども、人間には怯むくせに、";
+		mes "私には向かってくるって、";
+		mes "どういう事なの？";
+		next;
+		menu "君も悪霊じゃないの？",-;
+		mes "[ディワタ]";
+		mes "ちょっと！";
+		mes "・んな奴らと私が同じものに";
+		mes "見えるわけ？";
+		mes "信じられない！";
+		next;
+		mes "[ディワタ]";
+		mes "私は大自然の偉大なる精霊";
+		mes "ディワタよ！";
+		mes "守護する者なのっ！";
+		next;
+		mes "[ディワタ]";
+		mes "そんな私と・いつらの区別が";
+		mes "つかないなんて……";
+		mes "これだから町は嫌い。";
+		mes "なんかまたイライラしてきた！";
+		next;
+		mes "[ディワタ]";
+		mes "もう消えてーーー！";
+		next;
+		menu "君のせいで船が出港できないんだ！",-;
+		mes "[ディワタ]";
+		mes "えっ……";
+		mes "私のせいで船が運航できないの？";
+		mes "どうして？";
+		mes "　";
+		mes "……・っ！";
+		next;
+		mes "[ディワタ]";
+		mes "そういえば……";
+		mes "悪霊たちと間違えて何度か";
+		mes "船乗りっぽい人間も吹き飛ばして";
+		mes "しまったような……";
+		next;
+		mes "[ディワタ]";
+		mes "……でも！";
+		mes "わざとじゃないの！";
+		mes "・いつらが暴れるのを見ると";
+		mes "気分が悪くなっちゃって。";
+		next;
+		mes "[ディワタ]";
+		mes "それなのに・いつら、次から次と";
+		mes "現れるでしょ？";
+		mes "だから私も、手当り次第吹き飛ばす";
+		mes "しかなくって……";
+		next;
+		mes "[ディワタ]";
+		mes "……うん！　ごめんっ！";
+		mes "見境なく吹き飛ばすなんて";
+		mes "ひどいことをしてしまったわ。";
+		next;
+		mes "[ディワタ]";
+		mes "この船の船員に伝えて。";
+		mes "お詫びと言ってはなんだけど、";
+		mes "この船は今後、私が守護して";
+		mes "・げるって。";
+		mes "もう悪霊に縛られることは";
+		mes "なくなるわ。";
+		next;
+		mes "[ディワタ]";
+		mes "ただ、さっきも言ったけど、";
+		mes "・いつらを見てると私、";
+		mes "どんどん気分が悪くなっちゃうんだ。";
+		next;
+		cutin "malaya_diwata02.bmp",2;
+		mes "[ディワタ]";
+		mes "だから、これからも定期的に";
+		mes "お花を持ってきてくれないかな？";
+		next;
+		mes "[ディワタ]";
+		mes "お花を見てると、とっても";
+		mes "落ち着くんだ。";
+		mes "えへへ……";
+		next;
+		mes "[ディワタ]";
+		mes "よろしくね！";
+		delitem 6506,1;
+		delquest 7398;
+		setquest 7399;
+		set MALAYA_2QUE,5;
+		close2;
+		cutin "malaya_diwata02.bmp",255;
+		end;
+	case 5:
+		cutin "malaya_diwata02.bmp",2;
+		mes "[ディワタ]";
+		mes "悪霊がこの船に悪さをしないよう";
+		mes "私が守護するね。";
+		next;
+		mes "[ディワタ]";
+		mes "でも、・いつらの相手をしているうちに";
+		mes "私の気分も悪くなってしまうから、";
+		mes "その時はまたお花を持ってきて";
+		mes "ちょうだい！";
+		close2;
+		cutin "malaya_diwata02.bmp",255;
+		end;
+	case 6:
+		if(checkquest(7401) || checkquest(7403)) {
+			if(checkquest(7401) & 0x2) {
+				cutin "malaya_diwata01.bmp",2;
+				mes "[ディワタ]";
+				mes "・っちに行って!!";
+				mes "・れ？　・なたなの？";
+				mes "・の田舎のごろつきお化けたちが";
+				mes "また来たの！　許さない！";
+				close2;
+				cutin "malaya_diwata01.bmp",255;
+				end;
+			}
+			cutin "malaya_diwata02.bmp",2;
+			mes "[ディワタ]";
+			mes "異国の花を見るのは楽しい。";
+			mes "温かい国の花たちは";
+			mes "こんな甘い香りがするんだね。";
+			next;
+			if(select("また持ってくるよ","なぜこの船に乗っているの？")==1) {
+				mes "[ディワタ]";
+				mes "・りがとう。";
+				mes "・なたが持って来る花を見ると";
+				mes "心が落ち着くよ。";
+				mes "……。";
+				close2;
+				cutin "malaya_diwata02.bmp",255;
+				end;
+			}
+			mes "[ディワタ]";
+			mes "ん……";
+			mes "もともとは山に住んでいたんだけど、";
+			mes "山に・った木・の中でお昼寝して";
+			mes "いたら、いつの間にかこの船に";
+			mes "運ばれていたみたい。";
+			next;
+			mes "[ディワタ]";
+			mes "いつもなら私の姿は普通の人間には";
+			mes "見えないようにしているんだけど、";
+			mes "悪霊どもの相手をすることに";
+			mes "集中していたものだから……";
+			mes "それで船員にも私が";
+			mes "見えちゃったのね。";
+			next;
+			emotion 2;
+			mes "[ディワタ]";
+			mes "でも、船での生活も悪くはないわね！";
+			mes "私のいた山では見たことのない花を";
+			mes "いっぱい見ることができたもの。";
+			close2;
+			cutin "malaya_diwata02.bmp",255;
+			end;
+		}
+		cutin "malaya_diwata01.bmp",2;
+		mes "[ディワタ]";
+		mes "悪霊め！　また来たの!?";
+		mes "・れ？";
+		mes "なんだ、・なただったの？";
+		mes "今の私は機嫌が・まり良くないよ。";
+		next;
+		mes "‐ディワタは当たり前のように";
+		mes "　手を差し伸べた。";
+		mes "　何かを要求しているようだ‐";
+		next;
+		if(select("花束を渡す","手を握り合う")==2) {
+			mes "[ディワタ]";
+			mes "やめてよ、気持ち悪い！";
+			mes "・・、ただでさえ今は";
+			mes "イライラしているのに！";
+			mes "・なたまで私をイライラさせるの!?";
+			next;
+			cutin "malaya_diwata01.bmp",255;
+			mes "‐イライラしているディワタの怒りと";
+			mes "　共に船の外に出されてしまった‐";
+			close2;
+			warp "malaya",324,66;
+			end;
+		}
+		cutin "malaya_diwata02.bmp",2;
+		mes "[ディワタ]";
+		mes "・……やっぱり持って来てくれたのね！";
+		mes "唯一私の楽しみ、私の心が安らぐ……！";
+		mes "異国の花たちよ～！";
+		next;
+		mes "‐ディワタの気分が良くなったせいで";
+		mes "　周辺の気が温かくなって";
+		mes "　雰囲気もよくなった ‐";
+		next;
+		mes "[ディワタ]";
+		mes "ペドロに伝えてちょうだい。";
+		mes "今日はディワタが太陽になるから";
+		mes "気にせずに航海していいよって。";
+		delitem 6506,1;
+		setquest 7403;
+		delquest 72065;
+		next;
+		cutin "malaya_diwata02.bmp",255;
+		mes "‐ディワタに花束を渡した。";
+		mes "　ペドロに報告しよう‐";
+		close;
+	default:
+		cutin "malaya_diwata01.bmp",2;
+		mes "[ディワタ]";
+		mes "また来たな！";
+		mes "早く消えろー!!";
+		next;
+		cutin "malaya_diwata01.bmp",255;
+		mes "‐部屋に少女の声が響くと";
+		mes "　不思議な力で";
+		mes "　外に追い出されてしまった‐";
+		close2;
+		warp "malaya",324,66;
+		end;
+		}
+}
+malaya,282,129,4	script	Motorista do Jipe#03	582,{
+	
+	if(MALAYA_1QUE < 2) {
+		mes "[Motorista do Jipe]";
+		mes "Não é bom conversar com pessoas desconhecidas... Talvez o líder Mumbaki possa ter uma solução para isso .";
+		close;
+	}
+	if(MALAYA_1QUE < 6) {
+		mes "[ジプニードライバー]";
+		mes "最近ムンバキ様に会ったというのは";
+		mes "君たちなのか……？";
+		mes "いや、そんな人物が";
+		mes "こんなところにいるわけはないか。";
+		mes "……ということは、おばけなのか？";
+		mes "うわ・・……";
+		close;
+	}
+	mes "[ジプニードライバー]";
+	mes "ジプニーを運転している";
+	mes "^1561EAトップ^000000です。";
+	next;
+	callfunc "MalayaJeepney",3;
+	end;
+}
+
+malaya,341,153,3	script	Motorista do Jipe#05	582,{
+	mes "[Motorista do Jipe]";
+	mes "F... Fantasmas na cidade... Ei... Você tem um fantasma em você?";
+	close;
+}
+
+malaya,295,171,4	script	Vendedor de Antiguidades	582,{
+	mes "[Woeon]";
+	if(checkquest(7350) == 2) {
+	mes "Suspiro... A vida está tão difícil nos dias de hoje.";
+	mes "Por que os fantasmas se unem para me encomodar.";
+	mes "Eu gostaria de ter um amuleto da sorte ou algo assim...";
+	next;
+	setquest 7355;
+	completequest 7355;
+	mes "[Woeon]";
+	mes "Por que você não me dá um de seus pertences para que eu possa usá-lo?";
+	mes "Vamos lá, uma meia pode salvar a vida de um homem, você sabe.";
+	mes "Coração frio de um filho...";
+	callfunc "HelloMalQuestCheck";
+	close;
+	}
+	mes "Urghh... Urgh... Eu tenho uma dor de cabeça...";
+	mes "Minha dor de cabeça deve ter sido traga a mim por você forasteir"+((Sex) ? "o":"a")+"!";
+	mes "Saia. Saia!";
+	close;
+}
+
+malaya,293,290,4	script	Motorista do Jipe#06	582,{
+	mes "[Motorista do Jipe]";
+	mes "Gu... Guardas... O que os guardas estão fazendo...";
+	close;
+}
+
+malaya,276,262,4	script	Garoto Irritado#bako2	577,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,283,265,4	script	Chefe do Vilarejo#bako2	580,{
+	mes "[Chefe do Vilarejo]";
+	mes "Estou desesperado por uma ajuda";
+	mes "mas você parece";
+	mes "muito frac"+((Sex) ? "o":"a")+" e frágil.";
+	next;
+	mes "[Chefe do Vilarejo]";
+	mes "Por favor, volte quando";
+	mes "você crescer e for forte o suficiente como";
+	mes "uma Incubus.";
+	close;
+}
+
+malaya,276,269,4	script	Mulher Calma#bako2	579,{
+	mes "- Ela parece receiosa com você. -";
+	close;
+}
+
+malaya,269,267,4	script	Pai Perdido	582,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,286,269,4	script	Homem Irritado#bako2	578,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,278,288,4	script	Habitante do Porto#Malaya	583,{
+	mes "- Ela parece receiosa com você. -";
+	close;
+}
+
+malaya,276,288,4	script	Habitante do Porto#01	582,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,276,286,4	script	Habitante do Porto#02	582,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,265,274,4	script	Amigo Perdido	577,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,270,278,4	script	Filho Perdido#ba	578,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,265,284,4	script	Mãe Perdida	579,{
+	mes "- Ela parece receiosa com você. -";
+	close;
+}
+
+malaya,290,329,3	script	Menino Assustado#bako1	578,{
+	mes "- Ele parece receioso com você. -";
+	close;
+}
+
+malaya,285,332,4	script	Bancário Lendário#bako1	574,{
+	mes "[Bancário Lendário]";
+	mes "Há algo que precisa ser feito";
+	mes "mas você parece muito frágil";
+	mes "para ajudar.";
+	next;
+	mes "[Bancário Lendário]";
+	mes "Por favor, volte quando";
+	mes "você crescer e for forte o suficiente como";
+	mes "uma Incubus.";
+	close;
+}
+
+malaya,280,331,4	script	Homem Cantante#bako1	578,{
+	mes "[Homem Cantante]";
+	mes "História do dragão que vive em um lago~";
+	mes "História de uma velha senhora";
+	mes "que se tornou um dragão há muito tempo~";
+	next;
+	mes "[Homem Cantante]";
+	mes "Esperando pelo filho que partiu para uma terra distante,";
+	mes "meu filho irá voltar";
+	mes "quando a lua se por a 90º";
+	next;
+	mes "[Homem Cantante]";
+	mes "A lua se põe para 89º,";
+	mes "A lua se põe para 90º,";
+	mes "A lua se põe para 191º...";
+	next;
+	mes "[Homem Cantante]";
+	mes "A lua levou meu filho~";
+	mes "Que coisa horrível,";
+	mes "ela engoliu meu filho,";
+	mes "eu irei punir aquela lua~";
+	next;
+	mes "[Homem Cantante]";
+	mes "O dia em que a lua furiosa se esconde,";
+	mes "o mundo inteiro está inundado com a chuva";
+	mes "e todos os vilarejos e pessoas enfrentam a morte debaixo de água~";
+	next;
+	mes "[Homem Cantante]";
+	mes "A maldição da velha senhora tornou a lua furiosa~";
+	mes "Livre-se da velha senhora para acalmar a lua~";
+	mes "Se a velha senhora não estivesse aqui...";
+	next;
+	mes "[Homem Cantante]";
+	mes "Ouvi rumores~";
+	mes "De que a velha senhora se atirou para dentro do lago~";
+	mes "a velha senhora, agora transformada em dragão, irá engolir a lua";
+	mes "e logo engolirá também o vilarejo~";
+	close;
+}
+
+malaya,275,333,4	script	Mulher Cantante#bako1	579,{
+	mes "[Mulher Cantante]";
+	mes "Bakonawa vive em um lago,";
+	mes "a história da velha senhora que se tornou um dragão.";
+	next;
+	mes "[Mulher Cantante]";
+	mes "O filho que deveria voltar após a lua se por pela 90° vez";
+	mes "nunca mais voltou, mesmo depois da lua ter surgido centenas de vezes~";
+	mes "A lua engoliu o filho da velha senhora~";
+	next;
+	mes "[Mulher Cantante]";
+	mes "A lua, a lua, você receberá a maldição da velha senhora~";
+	mes "O vilarejo inteiro está sujeito a morte";
+	mes "com chuvas e inundações enviadas pela lua furiosa~";
+	next;
+	mes "[Mulher Cantante]";
+	mes "A lua, a lua, fique queita e calma,";
+	mes "a velha senhora se foi, ela não existe mais~";
+	mes "A velha senhora se afogou no lago~";
+	mes "Ela irá se transformar em Bakonawa e retornar";
+	next;
+	mes "[Mulher Cantante]";
+	mes "para te engolir e";
+	mes "punir o vilarejo em breve~";
+	mes "O dia em que a lua morrer";
+	mes "será também o dia em que o vilarejo terá seu fim~";
+	close;
+}
+
+malaya,275,333,4	script	Banqueira Antiga#bako	579,{
+	mes "- Ela parece receioso com você. -";
+	close;
+}
+
+malaya,264,338,4	script	Donzela Assustada#bako1	576,{
+	mes "- Ela parece receiosa com você. -";
+	close;
+}
+
+malaya,276,367,4	script	Xamã#ma	782,{
+
+	if(MALAYA_1QUE < 6) {
+		mes "[Xamã]";
+		mes "…………";
+		next;
+		mes "‐こちらに気づいていないようだ‐";
+		close;
+	}
+	mes "[Xamã]";
+	mes "うむ……";
+	mes "感じる……";
+	next;
+	mes "[Xamã]";
+	mes "何か不吉な気配を";
+	mes "おぬしから感じる……";
+	if(MALAYA_3QUE==24) {
+		next;
+		mes "[Xamã]";
+		mes "……";
+		mes "何も言わなくてもいい。";
+		mes "これが必要になるじゃろう。";
+		next;
+		mes "[Xamã]";
+		mes "この札はな、";
+		mes "強い力を封じ込めることが";
+		mes "できるのじゃ。";
+		next;
+		mes "[Xamã]";
+		mes "きわめて強力な効果を持つゆえ";
+		mes "使い方を誤れば、災いを招くじゃろう。";
+		mes "……だが、おぬしには必要なものじゃ。";
+		mes "持っていくがいい。";
+		next;
+		mes "[Xamã]";
+		mes "大丈夫じゃ。";
+		mes "お金は必要ない。";
+		mes "これはこの町の因果なのじゃ……";
+		next;
+		mes "‐シャーマンの札を受け取った。";
+		mes "　看護師ラズのところに戻ろう‐";
+		delquest 11305;
+		setquest 11306;
+		set MALAYA_3QUE,25;
+		close;
+	}
+	if(MALAYA_3QUE==25) {
+		next;
+		mes "‐看護師ラズのところに戻ろう‐";
+		close;
+	}
+	close;
+}
+
+malaya,289,364,4	script	Jovem Banqueiro#ba	583,{
+		if(MALAYA_1QUE < 6) {
+		mes "- Ele parece receioso com você. -";
+		close;
+	}
+	mes "[若い占い師]";
+	mes "月の力が弱まっています。";
+	mes "町の近くでモンスターが増えたのも、";
+	mes "バコナワの犠牲者が増えたのも、";
+	mes "そのせいです。";
+	close;
+}
+
+malaya,290,340,4	script	Líder dos Guardas#buwaya	571,{
+		if(MALAYA_1QUE < 6) {
+		mes "- Olha para você com receio enquanto sussura com outros guardas. -";
+		close;
+	}
+	switch(MALAYA_4QUE) {
+	case 10:
+		mes "[警備隊長]";
+		mes "悪霊やモンスターへの対応で";
+		mes "いま、私たちは忙しいんだ。";
+		next;
+		mes "[警備隊長]";
+		mes "だが、警備は万全の体制で臨んでいる。";
+		mes "安心してポートマラヤを楽しんでくれ。";
+		next;
+		if(select("ブワヤの事を知らせる","会話を終える")==2)
+			close;
+		mes "[警備隊長]";
+		mes "なに!?　ブワヤだって？";
+		mes "噂でしか聞いたことが無かったが、";
+		mes "本当に実在したとは！　何という事だ。";
+		next;
+		mes "[警備隊長]";
+		mes "困ったぞ。";
+		mes "今の私たちは町の中に";
+		mes "ほとんどの戦力を配置した状態だ。";
+		next;
+		mes "[警備隊長]";
+		mes "といって森を全面立入禁止に";
+		mes "することは容易ではない……。";
+		mes "森で食糧を集めて";
+		mes "生計を立てている人もいるのだ。";
+		mes "死活問題になってしまう……。";
+		next;
+		mes "[警備隊長]";
+		mes "そうだ！　すまないが君";
+		mes "ポートマラヤのために";
+		mes "少し力を貸してくれるかね？";
+		next;
+		if(select("任せて下さい","お断りします")==2) {
+			mes "[警備隊長]";
+			mes "ばかな!?";
+			mes "このままでは町の人たちが";
+			mes "無残にやられてしまう。";
+			mes "よく考え直してくれ。";
+			close;
+		}
+		mes "[警備隊長]";
+		mes "頼もしい！　・りがとう。";
+		mes "ではお願いさせてもらおう。";
+		next;
+		mes "[警備隊長]";
+		mes "町の住民たちの生活環境を";
+		mes "最大限確保するためには";
+		mes "ブワヤが出没しそうな場所を";
+		mes "把握しなければならない。";
+		mes "その為には、ブワヤの住処を";
+		mes "見つけるのが一番いいだろう。";
+		next;
+		mes "[警備隊長]";
+		mes "君にはこの^3131FF煙幕弾^000000を渡しておく。";
+		mes "まずはどこかに・るで・ろう";
+		mes "ブワヤの住処を探してきてほしい。";
+		next;
+		mes "[警備隊長]";
+		mes "それらしき場所を見つけたら";
+		mes "^3131FF空に向けて煙幕弾を撃ってくれ。^000000";
+		mes "その後、我々警備隊員が";
+		mes "合図を頼りに向かうようにする。";
+		next;
+		mes "[警備隊長]";
+		mes "くれぐれも気を付けてくれ。";
+		mes "健闘を祈る。";
+		delquest 2276;
+		setquest 2277;
+		set MALAYA_4QUE,11;
+		close;
+	case 11:
+		mes "[警備隊長]";
+		mes "まずはどこかに・るで・ろう";
+		mes "ブワヤの住処を探してきてほしい。";
+		mes "それらしき場所を見つけたら";
+		mes "^3131FF空に向けて煙幕弾を撃ってくれ。^000000";
+		mes "その後、我々警備隊員が";
+		mes "合図を頼りに向かうようにする。";
+		close;
+	case 12:
+	case 13:
+		mes "‐まずはトトイのもとに";
+		mes "　エドーを連れていって・げよう‐";
+		close;
+	case 14:
+		mes "[警備隊長]";
+		mes "無事に警備隊員からブワヤの住処を";
+		mes "伝達してもらったよ。";
+		mes "よくやってくれた。";
+		next;
+		mes "[警備隊長]";
+		mes "ブワヤ討伐に向けた戦力調達など";
+		mes "課題は色々・るが";
+		mes "討伐に向けて大きく一歩前進したよ。";
+		next;
+		mes "[警備隊長]";
+		mes "さ・、これは我々警備隊からの";
+		mes "感謝の気持ちだ。";
+		mes "ブワヤ退治にも協力してくれるなら";
+		mes "いつでも来てくれ。";
+		mes "では、また会うことにしよう。";
+		getexp 5000000,0,1;
+		getexp 5000000,0,1;
+		getexp 0,3000000,0;
+		delquest 2280;
+		setquest 201520;
+		set MALAYA_4QUE,15;
+		close;
+	case 15:
+		mes "[警備隊長]";
+		mes "バリオ・フォレストの深い森で";
+		mes "ブワヤが発見されたらしい。";
+		next;
+		if(BaseLevel < 130) {
+			mes "[警備隊長]";
+			mes "ブワヤはとても恐ろしい怪物だ";
+			mes "今の君の手には余るだろう。";
+			mes "^FF0000BaseLv130以上^000000になったら";
+			mes "また来てくれ。";
+			close;
+		}
+	default:
+		mes "[警備隊長]";
+		mes "お化けやモンスターへの対応で";
+		mes "いま、私たちは忙しいんだ。";
+		next;
+		mes "[警備隊長]";
+		mes "だが、警備は万全の体制で臨んでいる。";
+		mes "安心してポートマラヤを楽しんでくれ。";
+		close;
+	}
+}
+
+malaya,227,311,4	script	Avó#ma01	575,{
+
+		if(MALAYA_1QUE < 2) {
+		mes "[Avó]";
+		mes "Você não é daqui? Cuide-se.";
+		next;
+		mes "[Avó]";
+		mes "Estou preocupado com a minha filah que está grávida. Espero que nada dê errado.";
+		close;
+	}
+	if(MALAYA_1QUE < 6) {
+		mes "[お婆ちゃん]";
+		mes "この町の外から来た人が";
+		mes "頑張ってくれているらしいよ。";
+		next;
+		mes "[お婆ちゃん]";
+		mes "これでうちの嫁も安心だねえ。";
+		close;
+	}
+	set '@rand,rand(5);
+	switch(rand(1,2)) {
+	case 1:
+		if($MalayaName$['@rand] != "" && $MalayaName$['@rand] != strcharinfo(0)) {
+			mes "[お婆ちゃん]";
+			mes "最近、マナナンガルが好きで";
+			mes "追っている";
+			mes $MalayaName$['@rand];
+			mes "という方がいましたよ。";
+			next;
+			mes "[お婆ちゃん]";
+			mes "叶う事のない恋だけど";
+			mes "応援して・げないとね。";
+			close;
+		}
+	case 2:
+		mes "[お婆ちゃん]";
+		mes "嫁が妊娠をしているから心配なんだよ。";
+		mes "マナナンガルが嫁に手を出さなければ";
+		mes "いいのに……。";
+		next;
+		menu "マナナンガル？",-;
+		mes "[お婆ちゃん]";
+		mes "・んた、町の外から来た人かい？";
+		mes "外から来た人でも気を付けなければ";
+		mes "ならないからね……。";
+		mes "理由を教えて・げるよ。";
+		next;
+		mes "[お婆ちゃん]";
+		mes "マナナンガルは昔々ポートマラヤに";
+		mes "住んでいた女性だったんだよ。";
+		mes "良い男と出会って結婚もして、";
+		mes "子供も出来たんだよ。";
+		next;
+		mes "[お婆ちゃん]";
+		mes "だけど、みんなが幸せになるとは";
+		mes "限らないだろう？";
+		mes "その夫婦は結婚後に上手くいかなくて、";
+		mes "結局別れてしまったんじゃ。";
+		next;
+		menu "可哀想ですね",-;
+		mes "[お婆ちゃん]";
+		mes "ほんとにねぇ……";
+		mes "やがて、その女性は";
+		mes "幸せな家族に嫉妬をする・まり";
+		mes "悪霊マナナンガルとなり";
+		mes "幸せそうな家族をみると";
+		mes "子供を奪って行くようになったんだ。";
+		next;
+		mes "[お婆ちゃん]";
+		mes "もし夜中にポートマラヤを";
+		mes "歩き回っていて";
+		mes "チクチクまたはワクワクという";
+		mes "音がしたら、マナナンガルが";
+		mes "動き回っている音だから";
+		mes "注意した方がいいよ。";
+		close;
+	}
+}
+
+malaya,169,350,4	script	Imelda#pm03	475,{
+	if(MALAYA_1QUE < 2) {
+		mes "..........";
+		mes "Nada mal.";
+		mes "Manterei meus olhos em você.. *chuckle*";
+		next;
+		mes "- A Pequena Garota é um pouco irritante. -";
+		close;
+	}
+	if(MALAYA_1QUE < 6) {
+		mes "[イメルダー]";
+		mes "ふぅん……";
+		mes "なかなかやりますわね。";
+		mes "うまくやってるようだけど、";
+		mes "いつまで続くかしら。";
+		next;
+		mes "[イメルダー]";
+		mes "ま・化けの皮が剥がれないように、";
+		mes "せいぜい気を付けることね。";
+		emotion 32;
+		next;
+		mes "‐少女は何故か敵対心を露わにしている‐";
+		close;
+	}
+	switch(MALAYA_5QUE) {
+	case 0:
+		mes "[イメルダー]";
+		mes "はぁ……材料をなんとかしなくちゃ……";
+		next;
+		emotion 0;
+		mes "[イメルダー]";
+		mes "！";
+		next;
+		mes "[イメルダー]";
+		mes "・、・ら、インチキくさいお守りで";
+		mes "町のみんなの心を掌握した";
+		mes "英雄様じゃない。";
+		mes "私に何か用かしら？";
+		next;
+		if(select("お守りを作ることになったんだって？","君には真似出来ないだろうね")==1) {
+			mes "[イメルダー]";
+			mes "・ら、よくご存じね。";
+			mes "そうよ。私のおじいちゃんが";
+			mes "本物のお守りを作ってくれたの。";
+			mes "この^FF0000退魔のお守り^000000は本当に";
+			mes "凄いんだから！";
+		} else {
+			emotion 6;
+			mes "[イメルダー]";
+			mes "なによ、言ってくれるじゃない！";
+			mes "偶然上手くいったからって、";
+			mes "いつまでも続くとは思わないことね！";
+			next;
+			mes "[イメルダー]";
+			mes "見てなさい！";
+			mes "おじいちゃんが作ってくれた";
+			mes "この^FF0000退魔のお守り^000000は本当に";
+			mes "凄いんだから！";
+		}
+		next;
+		mes "[イメルダー]";
+		mes "これからは私が本物のお守りを作って、";
+		mes "みんなを助けるの。";
+		mes "よそ者の・なたが出る場面はないわ。";
+		mes "この町を守るのは私の仕事だもの！";
+		next;
+		if(select("何か手伝おうか？","それじゃ・一人で頑張って！")==2) {
+			mes "[イメルダー]";
+			mes "ええ！　別に・なたに手伝って";
+			mes "もらわなくてもけっこうよ！";
+			mes "町のみんなは私が助けるわ！";
+			next;
+			menu "その割にはお守りが見当たらないけど……",-;
+			mes "[イメルダー]";
+			mes "う、うるさいわね！";
+			mes "ちょうどこれから材料を、";
+			mes "集めに行こうと思ってたのよ！";
+			mes "忙しいんだから、邪魔するなら";
+			mes "早くどこかに行って！";
+			emotion 36;
+			close;
+		}
+		mes "[イメルダー]";
+		mes "どういう風の吹き回し？";
+		mes "別に・なたに手伝ってもらわなくても";
+		mes "私一人でできるわ。";
+		mes "それとも・なた、まだ町のみんなに";
+		mes "良い顔をしたいのかしら？";
+		next;
+		if(select("そんなことないよ","君が大変そうだったから")==1) {
+			mes "[イメルダー]";
+			mes "ふん、どうかしらね。";
+			emotion 32;
+		} else {
+			mes "[イメルダー]";
+			mes "な、なによ。";
+			mes "そんなこと言っても";
+			mes "騙されないんだから！";
+			emotion 19;
+		}
+		next;
+		if(BaseLevel < 100) {
+			mes "[イメルダー]";
+			mes "……ま・いいわ。";
+			mes "そこまで手伝いたいって言うなら、";
+			mes "私の手伝いを……";
+			mes "ん……弱い？";
+			mes "・なたちょっと弱いわね……。";
+			next;
+			mes "[イメルダー]";
+			mes "・なたではちょっと実力不足よ。";
+			mes "そうね。少なくとも";
+			mes "^FF0000BaseLv100以上^000000になってから";
+			mes "また来てくれるかしら。";
+			close;
+		}
+		mes "[イメルダー]";
+		mes "……ま・いいわ。";
+		mes "そこまで手伝いたいって言うなら、";
+		mes "手伝ってもらおうかしら。";
+		next;
+		mes "[イメルダー]";
+		mes "^FF0000退魔のお守り^000000を作るには、";
+		mes "^4d4dff尖った竹、塩袋、銀の十字架^000000が";
+		mes "それぞれ6個ずつ必要なの。";
+		mes "それを集めてきてくれる？";
+		next;
+		mes "[イメルダー]";
+		mes "^4d4dff尖った竹^000000はバリオ・マヒワガ近辺に";
+		mes "^FF0000黒い竹^000000が生えているから、";
+		mes "それを切ってきて。";
+		mes "長さは適当で構わないわ。";
+		next;
+		mes "[イメルダー]";
+		mes "黒い竹はバリオ・マヒワガの";
+		mes "警備犬がいるほうの柵の内側に・るわ。";
+		mes "他にもバリオ・マヒワガの";
+		mes "近辺に生えているわよ。";
+		mes "見た目は他の木と変わらないけど、";
+		mes "近くで見れば違いがわかるはずよ。";
+		next;
+		mes "[イメルダー]";
+		mes "^4d4dff塩袋^000000は町の北西側の海岸付近で";
+		mes "直接製塩して集める必要が・るわ。";
+		mes "私が掘っておいた^FF0000砂のくぼみ^000000が";
+		mes "その・たりに・るの。";
+		mes "そこで取ってきて。";
+		next;
+		mes "[イメルダー]";
+		mes "最後に^4d4dff銀の十字架^000000だけど、";
+		mes "^FF0000武器屋の前にいるパンドイ^000000に";
+		mes "銀のブレスレットを2個渡すと、";
+		mes "1個作ってくれるはずよ。";
+		next;
+		mes "[イメルダー]";
+		mes "……ただ銀のブレスレットは";
+		mes "^FF0000マナナンガルやチャナック、ワクワク^000000が";
+		mes "持っているの。";
+		mes "強力なモンスターばかりだから、";
+		mes "すごく危険だわ。";
+		next;
+		mes "[イメルダー]";
+		mes "怖いならやめてもいいわよ？";
+		mes "別に・なたが心配なわけじゃないけど、";
+		mes "私を手伝って怪我なんてされたら、";
+		mes "こっちが悪いみたいじゃない。";
+		emotion 29;
+		next;
+		menu "集めてくるのはそれで全部？",-;
+		mes "[イメルダー]";
+		mes "え？";
+		mes "え、ええ、そうよ。";
+		mes "これで全部……。";
+		next;
+		mes "[イメルダー]";
+		mes "じゃ、じゃ・私はここで待ってるから、";
+		mes "早く集めてきて頂戴。";
+		mes "せいぜい気をつけることね。";
+		delquest 72070;
+		setquest 7366;
+		set MALAYA_5QUE,1;
+		close;
+	case 1:
+		if(countitem(6500) < 6 || countitem(6501) < 6 || countitem(6502) < 6) {
+			mes "[イメルダー]";
+			mes "もしかして、必要な材料を";
+			mes "忘れてしまったの？";
+			mes "しょうがないわね。";
+			next;
+			mes "[イメルダー]";
+			mes "^FF0000退魔のお守り^000000を作るのに必要な材料は、";
+			mes "^4d4dff尖った竹、塩袋、銀の十字架^000000";
+			mes "各6個ずつよ。";
+			next;
+			mes "[イメルダー]";
+			mes "^4d4dff尖った竹^000000はバリオ・マヒワガ近辺の";
+			mes "黒い竹から、";
+			mes "^4d4dff塩袋^000000は町の北西の海岸の砂くぼみから、";
+			mes "^4d4dff銀の十字架^000000は^FF0000武器屋前にいるパンドイ^000000に";
+			mes "銀のブレスレットを2個渡すと";
+			mes "1個作ってくれるわ。";
+			next;
+			mes "[イメルダー]";
+			mes "銀のブレスレットは";
+			mes "^FF0000マナナンガルやチャナック、ワクワク^000000が";
+			mes "持っているけど、危ないと思ったら";
+			mes "無理しなくてもいいわよ？";
+			close;
+		}
+		mes "[イメルダー]";
+		mes "・ら、おかえりなさい。";
+		mes "頼んでいたものはどうなったかしら？";
+		next;
+		mes "[イメルダー]";
+		mes "すごい……本当に集めてきたのね。";
+		mes "無理だと思ってたのに……。";
+		emotion 0;
+		next;
+		menu "全部揃ってるかな？",-;
+		mes "[イメルダー]";
+		mes "え、ええ、問題ないわ。";
+		mes "・りがとう……。";
+		next;
+		mes "[イメルダー]";
+		mes "そ、それじゃ・私はこれから";
+		mes "集めてくれた材料を使って、";
+		mes "儀式を行うわ。";
+		mes "お守り作りに必要な神聖な儀式よ。";
+		next;
+		mes "[イメルダー]";
+		mes "儀式はすぐに終わるけど、";
+		mes "とても繊細なものだから";
+		mes "少し黙ってて。";
+		next;
+		mes "[イメルダー]";
+		mes "儀式が終わったら、";
+		mes "特別にお守りを見せて・げるわ。";
+		mes "また話かけて頂戴。";
+		delitem 6501,6;
+		delitem 6500,6;
+		delitem 6502,6;
+		delquest 7366;
+		setquest 7367;
+		set MALAYA_5QUE,2;
+		close;
+	case 2:
+		mes "[イメルダー]";
+		mes "ふぅ……。";
+		mes "これが今ちょうど出来上がった";
+		mes "^FF0000退魔のお守り^000000よ。";
+		next;
+		mes "‐竹と銀で作られた";
+		mes "　十字型のお守りからは、";
+		mes "　神聖な力を感じる‐";
+		next;
+		mes "[イメルダー]";
+		mes "ね？　素晴らしいでしょう？";
+		mes "やっぱりおじいちゃんは凄いわ！";
+		mes "これさえ・れば、町のみんなを";
+		mes "悩ませている悪霊も怖くなくなるわね。";
+		emotion 2;
+		next;
+		mes "‐無事お守りを作り終えて";
+		mes "　嬉しそうなイメルダーだが、";
+		mes "　ずいぶん疲弊しているように見える‐";
+		next;
+		mes "[イメルダー]";
+		mes "それじゃこのお守りを";
+		mes "町のみんなに配ってこなくちゃ。";
+		next;
+		menu "配ってきて・げるよ",-;
+		mes "[イメルダー]";
+		mes "え……いいわよ。";
+		mes "・なたには材料を集めもらったんだし。";
+		mes "これくらい私がやるわよ。";
+		next;
+		mes "[イメルダー]";
+		mes "それとも何？";
+		mes "やっぱり町のみんなの";
+		mes "人気を取りたいの？";
+		next;
+		menu "そうそう、だから少し休んでなよ",-;
+		mes "[イメルダー]";
+		mes "・……。";
+		emotion 0;
+		next;
+		mes "[イメルダー]";
+		mes "（この人、私が疲れているからって";
+		mes "　気遣ってくれてるんだ。";
+		mes "　自分も疲れているはずなのに……）";
+		next;
+		mes "[イメルダー]";
+		mes "（・んな態度をとっていた私に、";
+		mes "　どうして……？）";
+		next;
+		mes "[イメルダー]";
+		mes "……。";
+		emotion 9;
+		next;
+		mes "[イメルダー]";
+		mes "……そ、そうね、";
+		mes "そんなに言うなら仕方ないわね。";
+		mes "・なたに人気取りの機会を・げるわ。";
+		mes "せいぜいみんなに良い顔をすると良いわ。";
+		next;
+		mes "[イメルダー]";
+		mes "それじゃお守りと一緒に";
+		mes "届け先のリストを渡しておくわ。";
+		mes "地図にも記しておいたから、";
+		mes "間違えないように気をつけてね。";
+		next;
+		mes "‐イメルダーから^FF0000退魔のお守り^000000を";
+		mes "　受け取った。";
+		mes "　リストを元にみんなに配ろう‐";
+		viewpoint 1,181,353,0,0xFFFFFF;
+		viewpoint 1,228,267,1,0xFFFF00;
+		viewpoint 1,295,171,2,0x0000FF;
+		viewpoint 1,119,217,3,0xCCCCCC;
+		viewpoint 1,326,68,4,0x00FF00;
+		viewpoint 1,223,267,5,0xFF0000;
+		getitem 6503,6;
+		delquest 7367;
+		setquest 7368;
+		setquest 7369;
+		setquest 7370;
+		setquest 7371;
+		setquest 7372;
+		setquest 7373;
+		setquest 7374;
+		set MALAYA_5QUE,3;
+		close;
+	case 3:
+		mes "[イメルダー]";
+		mes "^FF0000退魔のお守り^000000を渡す人の場所は";
+		mes "リストと地図を見ればわかるわ。";
+		mes "みんな不安だと思うから、";
+		mes "できるだけ早く配ってきてね。";
+		if(!(MALAYA_5SUBQUE & 0x1))
+			viewpoint 1,181,353,0,0xFFFFFF;
+		if(!(MALAYA_5SUBQUE & 0x2))
+			viewpoint 1,228,267,1,0xFFFF00;
+		if(!(MALAYA_5SUBQUE & 0x8))
+			viewpoint 1,295,171,2,0x0000FF;
+		if(!(MALAYA_5SUBQUE & 0x10))
+			viewpoint 1,119,217,3,0xCCCCCC;
+		if(!(MALAYA_5SUBQUE & 0x20))
+			viewpoint 1,326,68,4,0x00FF00;
+		if(!(MALAYA_5SUBQUE & 0x4))
+			viewpoint 1,223,267,5,0xFF0000;
+		close;
+	case 4:
+		mes "[イメルダー]";
+		mes "ちゃんと全部届けてくれたのね。";
+		next;
+		mes "[イメルダー]";
+		mes "……。";
+		emotion 9;
+		next;
+		mes "[イメルダー]";
+		mes "ひとつ聞いていい？";
+		mes "どうして・なたは";
+		mes "私を手伝ってくれたの？";
+		mes "・んなに酷いことを言ったのに。";
+		next;
+		menu "君が街のために頑張っていたから",-,"街のみんなを助けたかったから",-;
+		mes "[イメルダー]";
+		mes "そう……。";
+		mes "　";
+		mes "うふふっ";
+		mes "よそ者のくせに変わった人ね。";
+		next;
+		mes "[イメルダー]";
+		mes "・なたが戻ってくるまでの間、";
+		mes "お守りを受け取った人が";
+		mes "何人もここに来たわ。";
+		next;
+		mes "[イメルダー]";
+		mes "これまで沈んでいたのが";
+		mes "嘘のように明るい笑顔で、";
+		mes "私と・なたにお礼を言っていたわ。";
+		next;
+		mes "[イメルダー]";
+		mes "……。";
+		emotion 9;
+		next;
+		mes "[イメルダー]";
+		mes "最初に・なたを見たときは、";
+		mes "よそ者がこの町の状況を見て、";
+		mes "面白半分でみんなの話を";
+		mes "聞いてまわってるんだと思ってた……。";
+		next;
+		mes "[イメルダー]";
+		mes "でも、私を手伝ってくれる姿や";
+		mes "町のみんなを見ていてわかったわ。";
+		mes "・なた、本当にいい人だったのね。";
+		next;
+		mes "[イメルダー]";
+		mes "本当は私一人じゃお守りの材料を";
+		mes "集めるのも無理だったの。";
+		mes "そんな時に・なたが手伝ってくれて、";
+		mes "嬉しかったわ。";
+		next;
+		mes "[イメルダー]";
+		mes "今まで生意気な事を言って";
+		mes "ごめんなさい。";
+		mes "それと、助けてくれて・りがとう。";
+		mes "これからも仲良くしてもらえるかしら？";
+		next;
+		menu "もちろん",-;
+		mes "[イメルダー]";
+		mes "良かった！　嬉しいわ。";
+		mes "これからよろしくね。";
+		emotion 3;
+		next;
+		mes "[イメルダー]";
+		mes "これは手伝ってくれたお礼よ。";
+		mes "受け取ってね。";
+		delquest 7374;
+		delquest 7379;
+		setquest 7375;
+		setquest 201500;
+		set MALAYA_5QUE,5;
+		getitem 6497,1;
+		getexp 5000000,0,1;
+		getexp 5000000,0,1;
+		getexp 0,3000000,0;
+		next;
+		mes "[イメルダー]";
+		mes "・と、実はお守りは";
+		mes "毎日作らないといけないの。";
+		mes "だから、もし時間が・るなら";
+		mes "手伝いに来てくれると嬉しいわ。";
+		next;
+		mes "[イメルダー]";
+		mes "無理だったら他の人に頼むけど、";
+		mes "できれば・なたに手伝って欲しいの。";
+		mes "お願いね。";
+		emotion 40;
+		close;
+	case 5:
+		if(checkquest(7379)) {
+			emotion 15;
+			mes "[イメルダー]";
+			mes "全部配り終えたのね。お疲れさま。";
+			next;
+			mes "[イメルダー]";
+			mes "でも……いつまでもお守りに";
+			mes "頼っているだけでは駄目よね。";
+			mes "結局お守りは強い心を持つ為の";
+			mes "きっかけでしかないわ。";
+			next;
+			mes "[イメルダー]";
+			mes "そのことに町の人々が気付いて";
+			mes "このお守りがいらなくなる日が";
+			mes "いつか来るのかしら。";
+			mes "そうなって欲しいけど……。";
+			next;
+			if(checkitemblank()==0) {
+				mes "[イメルダー]";
+				mes "……荷物がいっぱいのようね。";
+				mes "お礼を渡したいから、持ち物を";
+				mes "整理して、もう一度話しかけて";
+				mes "ちょうだい。";
+				close;
+			}
+			mes "[イメルダー]";
+			mes "・っ、ごめんなさい。";
+			mes "とにかく今日はこれで大丈夫。";
+			mes "いつも・りがとう。";
+			mes "これはお礼よ。";
+			setquest 7375;
+			delquest 72170;
+			delquest 7379;
+			getitem 6497,1;
+			getexp 500000,0,1;
+			getexp 0,200000,0;
+			close;
+		}
+		if(checkquest(7380)) {
+			if(countitem(6500) < 6 || countitem(6501) < 6 || countitem(6502) < 6) {
+				mes "[イメルダー]";
+				mes "^4d4dff尖った竹、塩袋、銀の十字架^000000を";
+				mes "各6個ずつ集めてきてね。";
+				next;
+				mes "[イメルダー]";
+				mes "^4d4dff尖った竹^000000はバリオ・マヒワガ近辺の";
+				mes "黒い竹から、";
+				mes "^4d4dff塩袋^000000は町の北西の海岸の砂くぼみから、";
+				mes "^4d4dff銀の十字架^000000はパンドイに";
+				mes "銀のブレスレットを渡せば";
+				mes "手に入れることができるわ。";
+				next;
+				mes "[イメルダー]";
+				mes "・なたなら大丈夫だと思うけど、";
+				mes "くれぐれも無理はしないでね。";
+				mes "無事を祈っています。";
+				close;
+			}
+			emotion 2;
+			mes "[イメルダー]";
+			mes "全部揃ってるわね。";
+			mes "いつも・りがとう！";
+			mes "こんなに優しい人を疑ってたなんて、";
+			mes "私、恥ずかしいわ。";
+			next;
+			if(checkitemblank()==0) {
+				mes "[イメルダー]";
+				mes "……荷物がいっぱいのようね。";
+				mes "お礼を渡したいから、持ち物を";
+				mes "整理して、もう一度話しかけて";
+				mes "ちょうだい。";
+				close;
+			}
+			mes "[イメルダー]";
+			mes "良かったら明日もまた来てね。";
+			mes "これは今回のお礼よ。";
+			delitem 6501,6;
+			delitem 6502,6;
+			delitem 6500,6;
+			delquest 7380;
+			setquest 7381;
+			getitem 6497,1;
+			getexp 500000,0,1;
+			getexp 0,200000,0;
+			close;
+		}
+		if(checkquest(72170)) {
+			mes "[イメルダー]";
+			mes "新しい^FF0000退魔のお守り^000000を";
+			mes "町のみんなに渡してきてね。";
+			mes "届け先はリストと地図を";
+			mes "見ればわかるわ。";
+			mes "それじゃ・、よろしくね！";
+			if(!(MALAYA_5SUBQUE & 0x1))
+				viewpoint 1,181,353,0,0xFFFFFF;
+			if(!(MALAYA_5SUBQUE & 0x2))
+				viewpoint 1,228,267,1,0xFFFF00;
+			if(!(MALAYA_5SUBQUE & 0x8))
+				viewpoint 1,295,171,2,0x0000FF;
+			if(!(MALAYA_5SUBQUE & 0x10))
+				viewpoint 1,119,217,3,0xCCCCCC;
+			if(!(MALAYA_5SUBQUE & 0x20))
+				viewpoint 1,326,68,4,0x00FF00;
+			if(!(MALAYA_5SUBQUE & 0x4))
+				viewpoint 1,223,267,5,0xFF0000;
+			close;
+		}
+		mes "[イメルダー]";
+		mes "・、こんにちは。";
+		mes "来てくれたのね。";
+		emotion 12;
+		next;
+		mes "[イメルダー]";
+		mes "ポートマラヤは気に入った？";
+		mes "ジプニーに乗って町を回るのも";
+		mes "なかなか楽しいわよ。";
+		next;
+		switch(select("退魔のお守り材料集めを手伝う","退魔のお守り配布を手伝う")) {
+		case 1:
+			if(checkquest(7381)) {
+				if(!(checkquest(7381) & 0x2)) {
+					mes "[イメルダー]";
+					mes "気遣ってくれて・りがとう。";
+					mes "でも、今日は材料が十分足りているわ。";
+					mes "材料が無くなったらお願いするね。";
+					close;
+				}
+			}
+			emotion 2;
+			mes "[イメルダー]";
+			mes "丁度お守りの材料が無くなって";
+			mes "困っていたところなの。";
+			mes "・なたが来てくれて助かったわ。";
+			mes "それじゃお願いできる？";
+			next;
+			if(select("もちろん","今はできないので後で手伝う")==2) {
+				mes "[イメルダー]";
+				mes "そう……わかったわ。";
+				mes "また後でね。";
+				close;
+			}
+			mes "[イメルダー]";
+			mes "じゃ・いつものようにお願いね。";
+			mes "^4d4dff尖った竹、塩袋、銀の十字架^000000を";
+			mes "各6個ずつよ。";
+			delquest 7381;
+			setquest 7380;
+			next;
+			mes "[イメルダー]";
+			mes "^4d4dff尖った竹^000000はバリオ・マヒワガ近辺の";
+			mes "黒い竹から、";
+			mes "^4d4dff塩袋^000000は町の北西の海岸の砂くぼみから、";
+			mes "^4d4dff銀の十字架^000000はパンドイに";
+			mes "銀のブレスレットを渡せば";
+			mes "手に入れることができるわ。";
+			next;
+			mes "[イメルダー]";
+			mes "・なたなら大丈夫だと思うけど、";
+			mes "くれぐれも無理はしないでね。";
+			mes "無事を祈っています。";
+			close;
+		case 2:
+			if(checkquest(7375)) {
+				if(!(checkquest(7375) & 0x2)) {
+					emotion 2;
+					mes "[イメルダー]";
+					mes "この前の^FF0000退魔のお守り^000000の効果が";
+					mes "まだ発揮しているわ。";
+					mes "だから今はまだ大丈夫。";
+					mes "でも・りがとう、";
+					mes "その気持ちだけで嬉しいわ。";
+					close;
+				}
+				mes "[イメルダー]";
+				mes "今日もお守りを配ってくれるの？";
+				next;
+				if(select("配る","配らない")==2) {
+					mes "[イメルダー]";
+					mes "そう……。";
+					mes "残念だけど、";
+					mes "・なたにも都合が・るものね。";
+					close;
+				}
+				if(checkquest(7381) & 0x2) {
+					mes "[イメルダー]";
+					mes "・りがとう。でも、材料がなくて";
+					mes "まだ^FF0000退魔のお守り^000000が完成してないの。";
+					mes "良かったら材料を集めてきてくれない？";
+					close;
+				}
+				emotion 3;
+				mes "[イメルダー]";
+				mes "・りがとう！";
+				mes "それじゃ今日もお願いするわ。";
+				mes "届け先のリストはこれよ。";
+				mes "地図にも記しておくわね。";
+				mes "配り終えたらまた来てね。";
+				viewpoint 1,181,353,0,0xFFFFFF;
+				viewpoint 1,228,267,1,0xFFFF00;
+				viewpoint 1,295,171,2,0x0000FF;
+				viewpoint 1,119,217,3,0xCCCCCC;
+				viewpoint 1,326,68,4,0x00FF00;
+				viewpoint 1,223,267,5,0xFF0000;
+				delquest 7375;
+				setquest 72170;
+				setquest 72174;
+				setquest 72182;
+				setquest 72178;
+				setquest 72176;
+				setquest 72172;
+				setquest 72180;
+				getitem 6503,6;
+				close;
+			}
+		}
+	}
+OnInit:
+	waitingroom "街を思う少女",0;
+	close;
+}
+
+malaya,291,152,3	script	#buwaya_soil	557,{
+	if(MALAYA_4QUE!=9) {
+		mes "- Você cheira a algo ruim -";
+		close;
+	}
+	mes "- Gosogoso -";
+	next;
+	mes "- Gosogoso -";
+	mes "- Craw -";
+	next;
+	mes "- Gosogoso -";
+	mes "- Craw -";
+	mes "- Gosogoso -";
+	next;
+	mes "- Com um objeto pontiagudo na mão -";
+	mes "- Os sentimentos se propagam -";
+	next;
+	menu "Este que é o",-;
+	mes "[Areia]";
+	mes "Mastigando! Que grande coisa dificil de engolir!";
+	next;
+	mes "[Areia]";
+	mes "Ele ^3131FFBuwaya^000000!";
+	mes "De jeito nenhum!";
+	next;
+	select("Buwaya?");
+	mes "[Areia]";
+	mes "Eu sabia! Buwaya";
+	mes "Sobrinho. Eu não o tenho mais.......";
+	mes "O amarelo, é muito intenso";
+	emotion 75,"#buwaya_soil";
+	next;
+	mes "[Areia]";
+	mes "....";
+	mes "......";
+	mes "Dificil, hein ~.";
+	emotion 54,"#buwaya_soil";
+	next;
+	mes "[Areia]";
+	mes "Hum. É assim.";
+	mes "O monstro que estava atrás de você";
+	mes "disse que viu a criança";
+	mes "sem dúvidas com Buwaya.";
+	next;
+	mes "[Areia]";
+	mes "Embora eu não me lembre de Mari ter falado sobre tempos antigos,";
+	mes "ela ouviu a história da esposa do Líder que foi invocada por esse cara Ru-. Sua tia, sou eu.";
+	next;
+	mes "[Areia]";
+	mes "É uma história que conta os tipos de vida que não mais existem por onde Buwaya passou.";
+	next;
+	select("Se sente bem faz muito tempo?");
+	mes "[Areia]";
+	mes "Eu costumava ouvir muitas coisas e fofocas a muitas décadas atrás. Não que eu tenha parado de ouvir recentemente... Pergunto-me se estava em estado de hibernação.";
+	next;
+	mes "[Areia]";
+	mes "De qualquer forma, estamos bem por enquanto. Mas é melhor manter o cuidado para que o monstro horrível que fica nas profundezas da floresta não volte a atacar os habitantes de Malaya.";
+	next;
+	mes "[Areia]";
+	mes "Bem. Sinto muito, mas você deve falar com o Líder da cidade sobre Buwaya.";
+	next;
+	mes "[Areia]";
+	mes "Assim que encontrarmos uma forma de derrotá-lo entraremos em contato.";
+	hideonnpc "#buwaya_soil";
+	erasequest 72160;
+	setquest 2276;
+	set MALAYA_4QUE,10;
+	close;
+OnInit:
+	hideonnpc "#buwaya_soil";
+	end;
+}
+
+malaya,290,152,5	script	Mestre de Caça#buway	578,{
+	switch(MALAYA_4QUE) {
+	case 5:
+		mes "[狩りの達人]";
+		mes "ひゅぅぅう！　ふぉぉぉぉ！";
+		mes "私は狩りの達人。";
+		mes "昨日はルーンミッドガッツ王国の";
+		mes "ごっついミノタウロスを";
+		mes "左手だけで倒してしまった。";
+		mes "おっと。何か用かな？";
+		next;
+		if(select("トトイから聞いた話をする","特に用は無い")==2) {
+			mes "[狩りの達人]";
+			mes "おい？　君！　どこに行くんだ?!";
+			close;
+		}
+		mes "[狩りの達人]";
+		mes "なんだって!?";
+		mes "怪物を見たことが・る人がいる？";
+		next;
+		mes "[狩りの達人]";
+		mes "大げさな事をいっちゃいけないよ。";
+		mes "モンスターならポートマラヤ中に";
+		mes "いくらでもいるんだ。";
+		mes "そのくらいでびっくりするなよ？";
+		next;
+		menu "背中に・を乗せた怪物らしい",-;
+		mes "[狩りの達人]";
+		mes "背中に・を乗せた怪物だと！";
+		mes "そんな怪物がどこにいるというんだ!?";
+		mes "私は狩りの達人だが、";
+		mes "そんな怪物は見たことがない。";
+		next;
+		mes "[狩りの達人]";
+		mes "・・。きっとその子が";
+		mes "その辺にいるコンドルを";
+		mes "驚いて見間違えたんだろう。";
+		next;
+		mes "[狩りの達人]";
+		mes "大人をバカにしてはいけないよ。";
+		mes "きっと、この狩りの達人の関心を";
+		mes "独り占めしたいんだろう。";
+		mes "全く、強すぎるのも罪で・る。";
+		mes "ひゅぅうぅぅ!!　ふぉぉぉぉ！";
+		next;
+		if(select("トトイを信じる","トトイを疑う")==2) {
+			mes "[狩りの達人]";
+			mes "子供たちはよく";
+			mes "自分たちが有利な話だけをする。";
+			mes "その子もそうだったんだろう。";
+			set MALAYA_4QUE,6;
+			close;
+		}
+	case 6:
+		if(MALAYA_4QUE==6) {
+			mes "[狩りの達人]";
+			mes "なんだ、また来たのか。";
+			next;
+			if(select("怪物を探してみる！","怪物はいないようです")==2) {
+				mes "[狩りの達人]";
+				mes "全部子供のいたずらだよ。";
+				close;
+			}
+		}
+		mes "[狩りの達人]";
+		mes "ほう？　そこまで言うなら";
+		mes "何か証拠を持って来てくれ。";
+		next;
+		mes "[狩りの達人]";
+		mes "そうだな。生きているものはみな";
+		mes "自身の痕跡を";
+		mes "何らかの形で必ず残している。";
+		mes "トイレを使わずに生活する事は";
+		mes "不可能だろう？";
+		mes "ふふふ。まぁそういう事だ。";
+		emotion 29;
+		next;
+		mes "[狩りの達人]";
+		mes "その子が怪物を見たという場所で";
+		mes "^FF0000・れの標本^000000を10個";
+		mes "採集して来てくれ。";
+		mes "集めてきてくれたら";
+		mes "その中に怪物の痕跡が・るか";
+		mes "調べようじゃないか。";
+		next;
+		mes "[狩りの達人]";
+		mes "綺麗な女性の手で";
+		mes "そのような物を触らせるのは忍びないが";
+		mes "まぁ……うん。";
+		mes "君ならなんとかしてくれるだろ？";
+		delquest 2273;
+		setquest 2274;
+		set MALAYA_4QUE,7;
+		close;
+	case 7:
+		if(countitem(6519) < 10) {
+			mes "[狩りの達人]";
+			mes "どうした。標本はまだか？";
+			mes "それとも君には難しかったかな。";
+			close;
+		}
+		delitem 6519,10;
+		delquest 2274;
+		setquest 2275;
+		set MALAYA_4QUE,8;
+		mes "[狩りの達人]";
+		mes "むむ。この香り!!ぐっ。";
+		mes "は……はぁ。た、確かに。";
+		mes "私が頼んだ標本のようだな。";
+		mes "とり・えずだ。そこに標本を置いて";
+		mes "手をよく洗って来てくれ。";
+		emotion 76;
+		close;
+	case 8:
+		mes "[狩りの達人]";
+		mes "では標本を調べてみよう。";
+		next;
+		mes "‐ごそごそ‐";
+		next;
+		mes "‐ごそごそ‐";
+		mes "‐ごそごそ‐";
+		next;
+		mes "‐ごそごそ‐";
+		mes "‐（く、臭い）‐";
+		mes "‐ごそごそ‐";
+		next;
+		mes "[狩りの達人]";
+		mes "む…！　こ、これは!!";
+		next;
+		mes "[狩りの達人]";
+		mes "おお！　お！　お！　お！　ほおおお!!";
+		next;
+		mes "[狩りの達人]";
+		mes "ちょっと君！";
+		mes "ここに来てこれを触ってみろ！";
+		delquest 2275;
+		setquest 72160;
+		set MALAYA_4QUE,9;
+		hideoffnpc "#buwaya_soil";
+		close;
+	case 9:
+		mes "[狩りの達人]";
+		mes "早く・の標本を直接触ってみろ！";
+		hideoffnpc "#buwaya_soil";
+		close;
+	case 10:
+		mes "[狩りの達人]";
+		mes "急いで警備隊長に";
+		mes "ブワヤが活動再開したことを";
+		mes "知らせるんだ。";
+		mes "警備隊長は";
+		mes "町の北側の地域にいるはずだ。";
+		close;
+	default:
+		if(MALAYA_4QUE < 11) {
+			mes "[狩りの達人]";
+			mes "Ah! Ha! Ha!";
+			mes "Eu sou o mestre de Caça! Eu não estou com medo de nada, com apenas uma exceção! Tenho medo de estranhos...";
+			close;
+		}
+		mes "[狩りの達人]";
+		mes "くうう……。";
+		close;
+	}
+}
+
+malaya,363,283,4	script	Local#ma06	582,{
+	if(MALAYA_1QUE < 2) {
+		mes "[Local]";
+		mes "Hum... é hora de tomar cuidado com a maldição das bruxas?";
+		next;
+		mes "[Local]";
+		mes "Cuidado com a agulha Monkukurums, forasteir"+((Sex) ? "o":"a")+".";
+		close;
+	}
+	if(MALAYA_1QUE < 6) {
+		mes "[住民]";
+		mes "ポートマラヤへようこそ。";
+		mes "異邦人よ……。";
+		next;
+		mes "[住民]";
+		mes "最近は町の様子がおかしいから";
+		mes "もし赤い目をしている人を見かけたら";
+		mes "その目を見ないようにしなさい……。";
+		close;
+	}
+	set '@rand,rand(5);
+	switch(rand(1,5)) {
+	case 1:
+		if($MalayaName$['@rand] != "" && $MalayaName$['@rand] != strcharinfo(0)) {
+			mes "[住民]";
+			mes "夜に町を歩き回る時は気を付けなさい。";
+			mes $MalayaName$['@rand];
+			mes "という冒険者が";
+			mes "ワクワクにやられたらしい。";
+			close;
+		}
+	case 2:
+		if($MalayaName$['@rand] != "" && $MalayaName$['@rand] != strcharinfo(0)) {
+			mes "[住民]";
+			mes $MalayaName$['@rand];
+			mes "という冒険者が、";
+			mes "ティクバランを手懐けることに";
+			mes "成功したという噂を聞いたが、";
+			mes "本当ならばに凄いな。";
+			next;
+			mes "[住民]";
+			mes "私もティクバランを";
+			mes "手懐けてみたいものだ。";
+			close;
+		}
+	case 3:
+		if($MalayaName$['@rand] != "" && $MalayaName$['@rand] != strcharinfo(0)) {
+			mes "[住民]";
+			mes "ブギスギスを見かけましたか。";
+			mes "最近";
+			mes $MalayaName$['@rand];
+			mes "という冒険者が";
+			mes "ブギスギスをイジメている";
+			mes "みたいなんです。";
+			close;
+		}
+	case 4:
+		if($MalayaName$['@rand] != "" && $MalayaName$['@rand] != strcharinfo(0)) {
+			mes "[住民]";
+			mes "もし町の外に出ることが・るようなら、";
+			mes "チャナックには気を付けなさい。";
+			mes $MalayaName$['@rand];
+			mes "という冒険者が";
+			mes "チャナックに騙され怪我をして、";
+			mes "病院に運ばれたという噂が・る。";
+			close;
+		}
+	case 5:
+		mes "[住民]";
+		mes "町の様子が慌ただしい。";
+		mes "マンククーラムが来ているのかも";
+		mes "しれない。";
+		next;
+		menu "マンククーラム？",-;
+		mes "[住民]";
+		mes "魔女と呼ばれているモンスターだ。";
+		mes "人と姿が似ていて、服も着ている。";
+		next;
+		mes "[住民]";
+		mes "すれ違った人の人形を作り、";
+		mes "針で刺し呪いをかけるんだ。";
+		next;
+		menu "区別する方法はないんですか？",-;
+		mes "[住民]";
+		mes "マンククーラムはみんな";
+		mes "赤い目をしている。";
+		mes "そこで区別することができる。";
+		next;
+		mes "[住民]";
+		mes "ただし、ここにも注意することが・る。";
+		next;
+		mes "[住民]";
+		mes "マンククーラムの赤い目を";
+		mes "長い間、見つめていると";
+		mes "マンククーラムに憑りつかれてしまう。";
+		next;
+		mes "[住民]";
+		mes "もし会うことになったら";
+		mes "目を長くみないように";
+		mes "注意したほうがいい。";
+		close;
+	}
+}
+
+malaya,305,281,4	script	Guarda#buwaya	570,{
+	mes "- Os guardas olham desconfiados, é óbvio que estão prestando atenção em você. Eles não irão te intimidar, mas parece que eles não confiam em você. -";
+	next;
+	mes "- Há alguém para conversar no vilarejo? -";
+	close;
+}
+
+malaya,242,221,4	script	Motorista do Jipe#07	582,{
+	mes "[Motorista do Jipe]";
+	if (checkquest(7350) == 2){
+	mes "Fantasma... Tenho certeza de que o líder Mumbaki sabe como se livrar desses fantasmas...";
+	close;
+	}
+	mes "Ah não... Acho que todo vilarejo está enfeitiçado por fantasmas... Talvez... Eu deva visitar o Líder Mumbaki...";
+	close;
+}
+
+malaya,237,240,4	script	Motorista do Jipe#01	582,{
+	mes "[Motorista do Jipe]";
+	if (checkquest(7350) == 2){
+	mes "O lugar está uma bagunça... Me pergunto como posso operar um jipe aqui...";
+	close;
+	}
+	mes "UUrgghhhh.... Estou com medo... com muito medo... o que aconteceu a este lugar?";
+	close;
+}
+
+malaya,219,92,4	script	Pequena Criança#ma05	577,{
+	mes "[Pequena Criança]";
+	if (checkquest(7350) == 2){
+	mes "Minha mãe me disse que eu posso brincar, mas só no Porto de Malaya.";
+	next;
+	mes "[Pequena Criança]";
+	mes "Hehe. Mas eu nunca pensei em sair do Porto de Malaya.";
+	close;
+	}
+	mes "Minha mãe me disse para não sair de Malaya, por que é perigoso. Por quê?";
+	close;
+}
+
+malaya,64,78,4	script	Mulher do Vilarejo#mab	583,{
+	mes "[Mulher do Vilarejo]";
+	mes "......";
+	next;
+	mes "Parece estar receiosa com você.";
+	close;
+}
+
+malaya,59,84,4	script	Vara de Madeira Suspeita::VS	858,{
+	mes "Está procurando por um bastão estranho.";
+	close;
+}
+
+malaya,50,85,4	duplicate(VS)	Vara de Madeira Suspeita::VS01	858
+malaya,48,79,4	duplicate(VS)	Vara de Madeira Suspeita::VS02	858
+malaya,46,93,4	duplicate(VS)	Vara de Madeira Suspeita::VS03	858
+malaya,50,46,4	duplicate(VS)	Vara de Madeira Suspeita::VS04	858
+malaya,34,36,4	duplicate(VS)	Vara de Madeira Suspeita::VS05	858
+malaya,40,32,4	duplicate(VS)	Vara de Madeira Suspeita::VS06	858
+malaya,34,36,4	duplicate(VS)	Vara de Madeira Suspeita::VS07	858
+malaya,31,42,4	duplicate(VS)	Vara de Madeira Suspeita::VS08	858
+malaya,40,52,4	duplicate(VS)	Vara de Madeira Suspeita::VS09	858
+malaya,59,84,4	duplicate(VS)	Vara de Madeira Suspeita::VS10	858
+malaya,36,98,4	duplicate(VS)	Vara de Madeira Suspeita::VS11	858
+
+malaya,67,44,4	script	Motorista do Jipe#02	582,{
+	mes "[Motorista do Jipe]";
+	if (checkquest(7350) == 2){
+	mes "Acho que o gemido que vinha do hospital diminuiu...";
+	close;
+	}
+	mes "O... O que... Está acontecendo naquele hospital...";
+	close;
+}
+
+malaya,62,37,4	script	Homem do Vilarejo#mab	582,{
+	mes "[Homem do Vilarejo]";
+	mes "Humm! Te conheço?";
+	mes "O que te traz a nossa cidade?";
+	next;
+	mes "- Parece estar receioso com você. -";
+	close;
+}
+
+malaya,55,72,4	script	Enfermeira#ma_n1	569,{
+	mes "[Enfermeira]";
+	mes "As pessoas dessa cidade são muito receiosas com pessoas estranhas.";
+	emotion 7;
+	next;
+	mes "[Enfermeira]";
+	mes "Tenho certeza de que eles possuem suas razões, mas gostaria que eles fossem mais receptíveis...";
+	close;
+}
+
+malaya,48,76,4	script	Porta de Hospital#ma_n1	139,{
+	mes "A porta do hospital parece estar fechada.";
+	close;
+}
+
+malaya,41,127,4	script	Homem Velho#ma07	574,{
+	mes "[Homem Velho]";
+	if (checkquest(7350) == 2){
+	mes "Você está sem sorte por estar visitando o vilarejo em um momento como esse.";
+	close;
+}
+	mes "[Homem Velho]";
+	mes "Estrangeiros que nos visitam não estão sendo bem-recebidos por causa de todo o caos que enfrentamos.";
+	close;
+}
+
+malaya,63,185,4	script	Mulher#ma08	583,{
+	mes "[Mulher]";
+	if (checkquest(7350) == 2){
+	mes "Estou preocupada com as crianças. Espero que elas não fiquem com medo do que está acontecendo no vilarejo.";
+	close;
+}
+	mes "Eu não tenho nada a compartilhar com você.";
+	close;
+}
+
+malaya,62,245,4	script	Motorista do Jipe#08	582,{
+	mes "[Motorista do Jipe]";
+	if (checkquest(7350) == 2){
+	mes "Ei... Você... É um humano certo? Certo? Hã? Diga quem é você... Por favor...";
+	close;
+	}
+	mes "Shoo~ Saia se você for um fantasma, mesmo se você for humano~ Shoo~";
+	close;
+}
+
+malaya,62,274,4	script	Armadilha de Areia#mal01::ArmaAre	557,{
+	mes "Um dispositivo para evaporar a água do mar está enterrado na areia...";
+	close;
+}
+malaya,66,277,4	duplicate(ArmaAre)	Armadilha de Areia#mal02	557
+malaya,70,282,4	duplicate(ArmaAre)	Armadilha de Areia#mal03	557
+
+malaya,88,252,4	script	Pequena Garota#ma04	576,{
+
+		if(MALAYA_1QUE < 2) {
+		mes "[Pequena Garota]";
+		mes "Estou com medo, mas tenho que visitar a fada na floresta.";
+		close;
+	}
+	if(MALAYA_1QUE < 6) {
+		mes "[Pequena Garota]";
+		mes "Hehe. Meu pai disse que posso visitar a fada na floresta quando o vilarejo estiver calmo.";
+		close;
+	}
+	switch(rand(1,2)) {
+	case 1:
+		if($MalayaName$[2] != "" && $MalayaName$[2] != strcharinfo(0)) {
+			mes "[少女]";
+			mes "少し前に";
+			mes $MalayaName$[2];
+			mes "という冒険者が";
+			mes "面白い話をして行きました。";
+			next;
+			mes "[少女]";
+			mes "カタコンベで狩りをしてると肩こんべ！";
+			mes "えへへ……面白く・りませんか？";
+			mes $MalayaName$[2];
+			mes "という方は";
+			mes "本当に面白い方のようです。";
+			close;
+		}
+	case 2:
+		mes "[少女]";
+		mes "森の妖精様と仲良くすると";
+		mes "病気にかからないと";
+		mes "お父さんが言っていましたよ。";
+		next;
+		menu "森の妖精様？",-;
+		mes "[少女]";
+		mes "エンカント様です！";
+		mes "森の大きな木や岩に住んでいる";
+		mes "妖精様です。";
+		next;
+		mes "[少女]";
+		mes "男の妖精様も女の妖精様もいるけど";
+		mes "男の妖精様が最も綺麗らしいです。";
+		mes "どうしてでしょう？";
+		close;
+	}
+}
+
+malaya,134,250,6	script	Motorista do Jipe#04	582,{
+
+	if(MALAYA_1QUE < 2) {
+		mes "[Motorista do Jipe]";
+		mes "S...Sa... Saia...";
+		close;
+	}
+	if(MALAYA_1QUE < 6) {
+		mes "[ジプニードライバー]";
+		mes "うわ・・……";
+		mes "びっくりしたじゃないか……";
+		mes "・っちに行けよ……";
+		close;
+	}
+	mes "[ジプニードライバー]";
+	mes "怖がりなので安全運転を心がけている";
+	mes "ジプニードライバー";
+	mes "^1561EAブラブ^000000です。";
+	next;
+	callfunc "MalayaJeepney",4;
+	end;
+}
+
+malaya,114,183,3	script	Senhora Encurvada#ma	575,{
+	switch(MALAYA_3QUE) {
+	case 17:
+		mes "[Senhora Encurvada]";
+		mes "・の病院にはきっと何かいる！";
+		next;
+		menu "木の棒を見せる",-;
+		mes "[Senhora Encurvada]";
+		mes "ん？";
+		mes "その棒は……";
+		emotion 23;
+		next;
+		mes "[Senhora Encurvada]";
+		mes "ええええええ!!";
+		emotion 23;
+		next;
+		mes "[Senhora Encurvada]";
+		mes "き、き、キサマ!!";
+		mes "なんちゅーことをしてくれたんじゃ！";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "それはヤツを封じるための";
+		mes "お守りだったのに！";
+		mes "それを抜いたら、またヤツが";
+		mes "悪さをはじめてしまう！";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "ワシは見たのじゃ！";
+		mes "病院の窓に映ったヤツの影を。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "……入院患者は誰一人として";
+		mes "帰ってこなかった。";
+		mes "おそらく、ヤツは患者達に悪夢を見せ";
+		mes "自分の糧にしていたに違いない。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "私の娘も、同じように……";
+		mes "…………";
+		next;
+		mes "‐病院の前には看護師ラズが";
+		mes "　一人で待っているはずだ。";
+		mes "　老婆の言う通りならば、";
+		mes "　「ヤツ」が病院から";
+		mes "　出てくるかもしれない。";
+		mes "　急いで病院に戻ろう‐";
+		delquest 11298;
+		setquest 11299;
+		set MALAYA_3QUE,18;
+		close;
+	case 18:
+		mes "‐病院の前には看護師ラズが";
+		mes "　一人で待っているはずだ。";
+		mes "　老婆の言う通りならば、";
+		mes "　「ヤツ」が病院から";
+		mes "　出てくるかもしれない。";
+		mes "　急いで病院に戻ろう‐";
+		close;
+	case 23:
+		mes "[Senhora Encurvada]";
+		mes "おや？";
+		mes "おまえさんは、たしか……？";
+		mes "……誰じゃったかのう？";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "病院の中のお守り？";
+		mes "……おそらく、町のシャーマンが";
+		mes "作ったものじゃろう。";
+		mes "シャーマンは";
+		mes "町の北の方にいるはずじゃ。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "それほど有名ではないが、";
+		mes "・のシャーマンの作る";
+		mes "お守りの効果は確かじゃぞ。";
+		next;
+		mes "‐ポートマラヤの北にいるという";
+		mes "　シャーマンに話を聞きに行こう‐";
+		delquest 11304;
+		setquest 11305;
+		set MALAYA_3QUE,24;
+		close;
+	case 24:
+		mes "[Senhora Encurvada]";
+		mes "シャーマンは";
+		mes "町の北の方にいるはずじゃ。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "それほど有名ではないのじゃが、";
+		mes "・のシャーマンの作る";
+		mes "お守りの効果は確かじゃぞ。";
+		next;
+		mes "‐ポートマラヤの北にいるという";
+		mes "　シャーマンに話を聞きに行こう‐";
+		close;
+	}
+	mes "[Senhora Encurvada]";
+	mes "おほほほ。";
+	next;
+	mes "[Senhora Encurvada]";
+	mes "え？";
+	mes "これ以上食べられんよ。";
+	next;
+	mes "[Senhora Encurvada]";
+	mes "そうじゃない？";
+	mes "ワシも若いころは";
+	mes "町で評判の美人だったのじゃ。";
+	if(MALAYA_3QUE==16) {
+		next;
+		mes "[Senhora Encurvada]";
+		mes "違う？";
+		mes "すまないねえ。";
+		mes "大きい声で話してくれんかね。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "病院のことじゃと？";
+		mes "お～、そうかそうか、病院か。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "ん……病院？";
+		mes "病院じゃと！";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "・・・・の病院は呪われておる！";
+		mes "とても悪いものが";
+		mes "憑りついておるのじゃ・！";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "ワシの娘も、ヤツに連れて行かれて";
+		mes "しまったのじゃ。";
+		mes "けして……けっして";
+		mes "近寄ってはならぬぞ。";
+		next;
+		if(select("病院のことを聞く","娘のことを聞く")==2) {
+			mes "[Senhora Encurvada]";
+			mes "私の娘は、命を落とすほどの";
+			mes "病ではなかった。";
+			mes "ただの風邪だったのじゃ……";
+			next;
+			mes "[Senhora Encurvada]";
+			mes "・の病院にはきっと何かいる！";
+			mes "きっとワシの娘も、";
+			mes "ヤツにやられたに違いないのじゃ！";
+			close;
+		}
+		mes "[Senhora Encurvada]";
+		mes "病院の設立が決まった時には、";
+		mes "みんな喜んだものじゃよ。";
+		mes "大きな病院の・る町まで";
+		mes "行かなくても、";
+		mes "治療を受けられるようになるとな。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "じゃが、どういうわけか";
+		mes "病院で治療を受けた者は";
+		mes "余計に悪くなっていったのじゃ。";
+		mes "やはり……町の古木を切って";
+		mes "病院を建築したのが";
+		mes "良くなかったに違いない。";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "病院がおかしいと気づいた者は";
+		mes "指導者様に陳情にも行ったのじゃ。";
+		mes "だが、何もしてくれなかった……";
+		next;
+		mes "[Senhora Encurvada]";
+		mes "そうしているうちに、";
+		mes "入院していた人たちが";
+		mes "次々に亡くなったと伝えられた。";
+		mes "私の娘と同じように……";
+		next;
+		mes "‐病院が呪われていると";
+		mes "　老婆は言っている。";
+		mes "　抜いた木の棒をこの老婆に";
+		mes "　見せてみよう‐";
+		delquest 11297;
+		setquest 11298;
+		set MALAYA_3QUE,17;
+	}
+	close;
+}
+
+malaya,189,263,4	script	Jovem Tocando#ma0	578,{
+	mes "[Jovem Tocando]";
+	if (checkquest(7350) == 2){
+	mes "Acho que a aldeia foi salva por um aventureir"+((Sex) ? "o":"a")+" sem nome.";
+	next;
+	emotion 54;
+	mes "[Jovem Tocando]";
+	mes "Puxa... Pensei que Bakonawa fosse aparecer novamente.";
+	close;
+	}
+	emotion 23;
+	mes "Ugh... é como antes";
+	next;
+	emotion 23;
+	mes "[Jovem Tocando]";
+	mes "quando a lua foi engolida. Argh!";
+	close;
+}
+
+malaya,71,79,3	script	Funcionária Kafra#01	581,{
+	callfunc "F_KafSet";
+	mes "[Funcionária Kafra]";
+	mes "Bem-vindo. Os Serviços Kafra estarão sempre a sua disposição.";
+	mes "Como posso te ajudar?";
+	callfunc "F_Kafra",5,3,1,20,600;
+	savepoint "malaya",143,109;
+	callfunc "F_KafEnd",0,1,"na cidade do Porto de Malaya";
+}
+
+malaya,234,204,3	duplicate(Funcionária Kafra#01)	Funcionária Kafra#02	581
+
+malaya,238,206,4	script	Oficial do Éden#Ma	729,{
+mes "[Oficial de Teleporte Éden]";
+mes "Estamos muito longe de casa aventureir"+((Sex) ? "o":"a")+".";
+	next;
+	switch(select("Ir para o Grupo Eden:Cancelar")) {
+		case 1:
+			mes "[Oficial de Teleporte Éden]";
+			mes "Vamos para a nossa base secreta!";
+			sleep2 600;
+			close2;
+			warp "moc_para",31,14;
+			end;
+
+		case 2:
+			mes "[Oficial de Teleporte Éden]";
+			mes "Estamos muito longe de casa aventureir"+((Sex) ? "o":"a")+".";
+			mes "Se você não souber o que fazer, não hesite em falar comigo. Volte e fale quando quiser! Certo?";
+			close;
+}
+}
+
+malaya,210,200,4	script	Dr. Boon#ma	865,{
+	mes "[Dr. Boon]";
+	mes "......";
+	next;
+	mes "Estou receioso com você.";
+	close;
+}
