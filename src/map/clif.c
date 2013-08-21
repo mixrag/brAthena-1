@@ -1687,7 +1687,7 @@ void clif_changemap(struct map_session_data *sd, short m, int x, int y)
 
 	WFIFOHEAD(fd,packet_len(0x91));
 	WFIFOW(fd,0) = 0x91;
-	mapindex_getmapname_ext(map[m].cName ? map[m].cName : map[m].name, (char*)WFIFOP(fd,2));
+	mapindex_getmapname_ext(map[m].custom_name ? map[map[m].instance_src_map].name : map[m].name, (char*)WFIFOP(fd,2));
 	WFIFOW(fd,18) = x;
 	WFIFOW(fd,20) = y;
 	WFIFOSET(fd,packet_len(0x91));
@@ -4374,7 +4374,7 @@ void clif_changemapcell(int fd, int16 m, int x, int y, int type, enum send_targe
 	WBUFW(buf,2) = x;
 	WBUFW(buf,4) = y;
 	WBUFW(buf,6) = type;
-	mapindex_getmapname_ext(map[m].cName ? map[m].cName : map[m].name,(char*)WBUFP(buf,8));
+	mapindex_getmapname_ext(map[m].custom_name ? map[map[m].instance_src_map].name : map[m].name,(char*)WBUFP(buf,8));
 
 	if(fd) {
 		WFIFOHEAD(fd,packet_len(0x192));
@@ -6754,7 +6754,7 @@ void clif_party_member_info(struct party_data *p, struct map_session_data *sd)
 	WBUFB(buf,14) = (p->party.member[i].online)?0:1;
 	memcpy(WBUFP(buf,15), p->party.name, NAME_LENGTH);
 	memcpy(WBUFP(buf,39), sd->status.name, NAME_LENGTH);
-	mapindex_getmapname_ext(map[sd->bl.m].cName ? map[sd->bl.m].cName : map[sd->bl.m].name, (char*)WBUFP(buf,63));
+	mapindex_getmapname_ext(map[sd->bl.m].custom_name ? map[map[sd->bl.m].instance_src_map].name : map[sd->bl.m].name, (char*)WBUFP(buf,63));
 	WBUFB(buf,79) = (p->party.item&1)?1:0;
 	WBUFB(buf,80) = (p->party.item&2)?1:0;
 	clif_send(buf,packet_len(0x1e9),&sd->bl,PARTY);
@@ -17417,11 +17417,11 @@ void clif_status_change_end(struct block_list *bl, int tid, enum send_target tar
 	clif_send(&p,sizeof(p), bl, target);
 }
 
-/// Mensagem do Sistema VIP Oficial - brAthena [Megasantos/Shiraz]
+/// Mensagem do Sistema Indicação de Exp e VIP Oficial - brAthena [Megasantos/Shiraz]
 /// Agradecimentos a Revok pelo pacote de client abaixo de 2013.
 /// 0x8cb <packet len>.W <exp>.W <death>.W <drop>.W (ZC_PERSONAL_INFOMATION)
 /// 0x97b <packet len>.W <exp>.L <death>.L <drop>.L (ZC_PERSONAL_INFOMATION2)
-void clif_vipshow(struct map_session_data *sd)
+void clif_personal_information(struct map_session_data *sd)
 {
 #if PACKETVER >= 20120410
 	int packet;
@@ -17435,39 +17435,39 @@ void clif_vipshow(struct map_session_data *sd)
 
 	sd->fd = (int)sd->fd;
 
+#if PACKETVER < 20130320
 	WFIFOHEAD(sd->fd,17);
+#else
+	WFIFOHEAD(sd->fd,34);
+#endif
 	WFIFOW(sd->fd,0)  = packet;
+#if PACKETVER < 20130320
 	WFIFOW(sd->fd,2)  = 17;
+#else
+	WFIFOW(sd->fd,2)  = 34;
+#endif
 	WFIFOW(sd->fd,4)  = battle_config.base_exp_rate;
+#if PACKETVER < 20130320
 	WFIFOW(sd->fd,6)  = battle_config.death_penalty_base;
 	WFIFOW(sd->fd,8)  = 100;
 	WFIFOB(sd->fd,10) = 0;
 	WFIFOW(sd->fd,11) = bra_config.extra_exp_vip;
 	WFIFOW(sd->fd,13) = bra_config.penalty_exp_vip;
 	WFIFOW(sd->fd,15) = 100;
-	WFIFOSET(sd->fd,17);
+#else
+	WFIFOW(sd->fd,8)  = battle_config.death_penalty_base;
+	WFIFOW(sd->fd,12) = 100;
+	WFIFOB(sd->fd,22) = 0;
+	WFIFOW(sd->fd,23) = 0;
+	WFIFOW(sd->fd,24) = bra_config.extra_exp_vip;;
+	WFIFOW(sd->fd,28) = bra_config.penalty_exp_vip;
+	WFIFOW(sd->fd,32) = 100;
 #endif
-}
-
-/// Mensagem do Sistema VIP Oficial - brAthena [Megasantos]
-/// 0981 <packet len>.W <exp>.W <death>.W <drop>.W <activity rate>.W (ZC_PERSONAL_INFOMATION_CHN)
-void clif_vipshow2(struct map_session_data* sd)
-{
-#if PACKETVER >= 20120410
-	int packet;
-	nullpo_retv(sd);
-	
-	sd->fd = (int)sd->fd;
-	packet = 0x981;
-	
-	WFIFOHEAD(sd->fd,12);
-	WFIFOW(sd->fd,0)  = packet;
-	WFIFOW(sd->fd,2)  = 12;
-	WFIFOW(sd->fd,4)  = battle_config.base_exp_rate;
-	WFIFOW(sd->fd,6)  = battle_config.death_penalty_base;
-	WFIFOW(sd->fd,8)  = 100;
-	WFIFOW(sd->fd,10) = 100;
-	WFIFOSET(sd->fd,12);
+#if PACKETVER < 20130320
+	WFIFOSET(sd->fd,17);
+#else
+	WFIFOSET(sd->fd,34);
+#endif
 #endif
 }
 

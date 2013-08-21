@@ -1125,8 +1125,8 @@ bool pc_authok(struct map_session_data *sd, int login_id2, time_t expiration_tim
 		clif_changemap(sd,sd->bl.m,sd->bl.x,sd->bl.y);
 	}
 	
-	if(bra_config.enable_system_vip)
-		clif_vipshow(sd);
+	if(bra_config.show_message_exp)
+		clif_personal_information(sd);
 
 	/**
 	 * Check if player have any cool downs on
@@ -4701,7 +4701,7 @@ int pc_setpos(struct map_session_data *sd, unsigned short mapindex, int x, int y
 		if(sd->instances) {
 			for(i = 0; i < sd->instances; i++) {
 				if(sd->instance[i] >= 0) {
-					ARR_FIND(0, instances[sd->instance[i]].num_map, j, map[instances[sd->instance[i]].map[j]].instance_src_map == m && !map[instances[sd->instance[i]].map[j]].cName);
+					ARR_FIND(0, instances[sd->instance[i]].num_map, j, map[instances[sd->instance[i]].map[j]].instance_src_map == m && !map[instances[sd->instance[i]].map[j]].custom_name);
 					if(j != instances[sd->instance[i]].num_map)
 						break;
 				}
@@ -4715,7 +4715,7 @@ int pc_setpos(struct map_session_data *sd, unsigned short mapindex, int x, int y
 		if (!stop && sd->status.party_id && (p = party_search(sd->status.party_id)) && p->instances) {
 			for(i = 0; i < p->instances; i++) {
 				if(p->instance[i] >= 0) {
-					ARR_FIND(0, instances[p->instance[i]].num_map, j, map[instances[p->instance[i]].map[j]].instance_src_map == m && !map[instances[p->instance[i]].map[j]].cName);
+					ARR_FIND(0, instances[p->instance[i]].num_map, j, map[instances[p->instance[i]].map[j]].instance_src_map == m && !map[instances[p->instance[i]].map[j]].custom_name);
 					if(j != instances[p->instance[i]].num_map)
 						break;
 				}
@@ -4729,7 +4729,7 @@ int pc_setpos(struct map_session_data *sd, unsigned short mapindex, int x, int y
 		if (!stop && sd->status.guild_id && sd->guild && sd->guild->instances) {
 			for(i = 0; i < sd->guild->instances; i++) {
 				if(sd->guild->instance[i] >= 0) {
-					ARR_FIND(0, instances[sd->guild->instance[i]].num_map, j, map[instances[sd->guild->instance[i]].map[j]].instance_src_map == m && !map[instances[sd->guild->instance[i]].map[j]].cName);
+					ARR_FIND(0, instances[sd->guild->instance[i]].num_map, j, map[instances[sd->guild->instance[i]].map[j]].instance_src_map == m && !map[instances[sd->guild->instance[i]].map[j]].custom_name);
 					if(j != instances[sd->guild->instance[i]].num_map)
 						break;
 				}
@@ -5126,6 +5126,7 @@ int pc_jobid2mapid(unsigned short b_class)
 		case JOB_KAGEROU:
 		case JOB_OBORO:                 return MAPID_KAGEROUOBORO;
 		case JOB_DEATH_KNIGHT:          return MAPID_DEATH_KNIGHT;
+		case JOB_REBELLION:             return MAPID_REBELLION;
 			//2-2 Jobs
 		case JOB_CRUSADER:              return MAPID_CRUSADER;
 		case JOB_SAGE:                  return MAPID_SAGE;
@@ -5266,6 +5267,7 @@ int pc_mapid2jobid(unsigned short class_, int sex)
 		case MAPID_STAR_GLADIATOR:        return JOB_STAR_GLADIATOR;
 		case MAPID_KAGEROUOBORO:          return sex?JOB_KAGEROU:JOB_OBORO;
 		case MAPID_DEATH_KNIGHT:          return JOB_DEATH_KNIGHT;
+		case MAPID_REBELLION:             return JOB_REBELLION;
 			//2-2 Jobs
 		case MAPID_CRUSADER:              return JOB_CRUSADER;
 		case MAPID_SAGE:                  return JOB_SAGE;
@@ -5584,6 +5586,9 @@ const char *job_name(int class_)
 		case JOB_KAGEROU:
 		case JOB_OBORO:
 			return msg_txt(653 - JOB_KAGEROU+class_);
+
+		case JOB_REBELLION:
+			return msg_txt(619 - JOB_REBELLION+class_);
 
 		default:
 			return msg_txt(655);
@@ -9704,6 +9709,7 @@ void pc_read_skill_tree(void) {
 		{ "Expanded_Super_Baby", JOB_SUPER_BABY_E },
 		{ "Kagerou", JOB_KAGEROU },
 		{ "Oboro", JOB_OBORO },
+		{ "Rebellion", JOB_REBELLION },
 	};
 
 	memset(skill_tree,0,sizeof(skill_tree));

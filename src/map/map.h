@@ -122,6 +122,7 @@ enum {
 	MAPID_STAR_GLADIATOR,
 	MAPID_KAGEROUOBORO = JOBL_2_1|0x0A,
 	MAPID_DEATH_KNIGHT = JOBL_2_1|0x0E,
+	MAPID_REBELLION = JOBL_2_1|0x0F,
 //2-2 Jobs
 	MAPID_CRUSADER = JOBL_2_2|0x1,
 	MAPID_SAGE,
@@ -720,8 +721,7 @@ struct map_data {
 	/* long_damage_rate mapflag */
 	unsigned short long_damage_rate;
 
-	/* instance unique name */
-	char *cName;
+	bool custom_name; ///< Whether the instanced map is using a custom name
 
 	/* */
 	int (*getcellp)(struct map_data* m,int16 x,int16 y,cell_chk cellchk);
