@@ -270,7 +270,11 @@ function	script	F_KafTele	{
 	else if (@wrpD$[.@j] == "Mina Abandonada de Mjolnir") warp "mjolnir_02", 99, 351;
 	else if (@wrpD$[.@j] == "Morroc") warp "morocc", 156, 46;
 	else if (@wrpD$[.@j] == "Caverna dos Orcs") warp "gef_fild10", 52, 326;
-	else if (@wrpD$[.@j] == "Payon") warp "payon", 161, 58;
+	else if (@wrpD$[.@j] == "Payon") 
+		if(checkversion(0) != -1)
+			warp "payon", 161, 58;
+		else
+			warp "payon", 69, 100;
 	else if (@wrpD$[.@j] == "Prontera") warp "prontera", 116, 72;
 	else if (@wrpD$[.@j] == "Umbala") warp "umbala", 100, 154;
 	end;
@@ -285,13 +289,17 @@ function	script	F_KafCart	{
 	if(BaseClass != Job_Merchant){
 		mes "[Funcionária Kafra]";
 		mes "Eu lamento, mas o serviço de aluguel de carrinho está disponível somente para Mercadores,Ferreiros, Mestre Ferreiros,Alquimistas e Criadores";
-		close;
+		close2;
+		cutin "", 255;
+		end;
 	}
 	else if(checkcart() == 1){
 		mes "[Funcionária Kafra]";
 		mes "Você já possui um carrinho equipado.";
 		mes "Infelizmente, nós não podemos alugar mais de um carrinho por vez.";
-		close;
+		close2;
+		cutin "", 255;
+		end;
 	}
 	if(countitem(7061) > 0 && getarg(0) != 2) delitem 7061,1;
 	else {
@@ -305,7 +313,9 @@ function	script	F_KafCart	{
 				mes "[Funcionária Kafra]";
 				mes "Lamento, mas você não possui Zenys suficientes para alugar um carrinho.";
 				mes "O aluguel custa "+getarg(1)+" Zenys.";
-				close;
+				close2;
+				cutin "", 255;
+				end;
 			}
 			set Zeny,Zeny-getarg(1);
 			set RESRVPTS, RESRVPTS + 48;
