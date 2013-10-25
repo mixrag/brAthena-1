@@ -385,7 +385,7 @@ enum {
     /**
      * No longer available, keeping here just in case it's back someday. [Ind]
      **/
-    //MF_RAIN,  //20
+    MF_RAIN,  //20
     // 21 free
     MF_CLOUDS = 23,
     MF_CLOUDS2,
@@ -927,7 +927,7 @@ const char *skip_word(const char *p)
 			p += (p[1] == '@' ? 2 : 1); break;
 	}
 
-	while(ISALNUM(*p) || *p == '_')
+	while(ISALNUM(*p) || *p == '_' || *p == '\'')
 		++p;
 
 	// postfix
@@ -970,16 +970,16 @@ const char *parse_callfunc(const char *p, int require_paren, int is_custom)
 {
 	const char *p2;
 	const char *arg  = NULL;
+	char null_arg = '\0';
 	int func;
 
 	func = add_word(p);
 	if(str_data[func].type == C_FUNC) {
-		char argT = 0;
 		// buildin function
 		add_scriptl(func);
 		add_scriptc(C_ARG);
 		arg = buildin_func[str_data[func].val].arg;
-		if(!arg) arg = &argT;
+		if(!arg) arg = &null_arg; // Use a dummy, null string
 	} else if(str_data[func].type == C_USERFUNC || str_data[func].type == C_USERFUNC_POS) {
 		// script defined function
 		add_scriptl(buildin_callsub_ref);
@@ -3301,8 +3301,9 @@ void op_2(struct script_state *st, int op)
 		script_removetop(st, leftref.type == C_NOP ? -3 : -2, -1);// pop the two values before the top one
 
 		if(leftref.type != C_NOP) {
-			aFree(left->u.str);
-			*left = leftref;
+			if (left->type == C_STR) // don't free C_CONSTSTR
+				aFree(left->u.str);
+				*left = leftref;
 		}
 	} else if(data_isint(left) && data_isint(right)) {
 		// ii => op_2num
@@ -7177,7 +7178,7 @@ BUILDIN_FUNC(strnpcinfo)
 static unsigned int equip[] = {EQP_HEAD_TOP,EQP_ARMOR,EQP_HAND_L,EQP_HAND_R,EQP_GARMENT,EQP_SHOES,EQP_ACC_L,EQP_ACC_R,EQP_HEAD_MID,EQP_HEAD_LOW,EQP_COSTUME_HEAD_LOW,EQP_COSTUME_HEAD_MID,EQP_COSTUME_HEAD_TOP,EQP_COSTUME_GARMENT};
 
 /*==========================================
- * GetEquipID(Pos);     Pos: 1-13
+ * GetEquipID(Pos);     Pos: 1-SCRIPT_EQUIP_TABLE_SIZE
  *------------------------------------------*/
 BUILDIN_FUNC(getequipid)
 {
@@ -7578,13 +7579,15 @@ BUILDIN_FUNC(failedrefitem)
  *------------------------------------------*/
 BUILDIN_FUNC(downrefitem)
 {
-	int i = -1,num,ep;
+	int i = -1,num,ep, down = 1;
 	TBL_PC *sd;
 
-	num = script_getnum(st,2);
 	sd = script_rid2sd(st);
 	if(sd == NULL)
 		return 0;
+	num = script_getnum(st,2);
+	if(script_hasdata(st, 3))
+		down = script_getnum(st, 3);
 
 	if(num > 0 && num <= ARRAYLENGTH(equip))
 		i = pc_checkequip(sd,equip[num-1]);
@@ -7594,10 +7597,11 @@ BUILDIN_FUNC(downrefitem)
 		//Logs items, got from (N)PC scripts [Lupus]
 		log_pick_pc(sd, LOG_TYPE_SCRIPT, -1, &sd->status.inventory[i],sd->inventory_data[i]);
 
-		sd->status.inventory[i].refine++;
 		pc_unequipitem(sd,i,2); // status calc will happen in pc_equipitem() below
+		sd->status.inventory[i].refine -= down;
+		sd->status.inventory[i].refine = cap_value( sd->status.inventory[i].refine, 0, MAX_REFINE);
 
-		clif_refine(sd->fd,2,i,sd->status.inventory[i].refine = sd->status.inventory[i].refine - 2);
+		clif_refine(sd->fd,2,i,sd->status.inventory[i].refine);
 		clif_delitem(sd,i,1,3);
 
 		//Logs items, got from (N)PC scripts [Lupus]
@@ -9305,26 +9309,28 @@ BUILDIN_FUNC(announce)
 	int         fontAlign = script_hasdata(st,7) ? script_getnum(st,7) : 0;     // default fontAlign
 	int         fontY     = script_hasdata(st,8) ? script_getnum(st,8) : 0;     // default fontY
 
-	if(flag&0x0f) { // Broadcast source or broadcast region defined
+	if(flag&(BC_TARGET_MASK|BC_SOURCE_MASK)) { // Broadcast source or broadcast region defined
 		send_target target;
-		struct block_list *bl = (flag&0x08) ? map_id2bl(st->oid) : (struct block_list *)script_rid2sd(st); // If bc_npc flag is set, use NPC as broadcast source
+		struct block_list *bl = (flag&BC_NPC) ? map_id2bl(st->oid) : (struct block_list *)script_rid2sd(st); // If bc_npc flag is set, use NPC as broadcast source
 		if(bl == NULL)
 			return 0;
 
-		flag &= 0x07;
-		target = (flag == 1) ? ALL_SAMEMAP :
-		         (flag == 2) ? AREA :
-		         (flag == 3) ? SELF :
-		         ALL_CLIENT;
+		switch(flag&BC_TARGET_MASK) {
+			case BC_MAP:  target = ALL_SAMEMAP; break;
+			case BC_AREA: target = AREA;        break;
+			case BC_SELF: target = SELF;        break;
+			default:      target = ALL_CLIENT;  break; // BC_ALL
+		}
+
 		if(fontColor)
 			clif_broadcast2(bl, mes, (int)strlen(mes)+1, strtol(fontColor, (char **)NULL, 0), fontType, fontSize, fontAlign, fontY, target);
 		else
-			clif_broadcast(bl, mes, (int)strlen(mes)+1, flag&0xf0, target);
+			clif_broadcast(bl, mes, (int)strlen(mes)+1, flag&BC_COLOR_MASK, target);
 	} else {
 		if(fontColor)
 			intif_broadcast2(mes, (int)strlen(mes)+1, strtol(fontColor, (char **)NULL, 0), fontType, fontSize, fontAlign, fontY);
 		else
-			intif_broadcast(mes, (int)strlen(mes)+1, flag&0xf0);
+			intif_broadcast(mes, (int)strlen(mes)+1, flag&BC_COLOR_MASK);
 	}
 	return 0;
 }
@@ -9363,7 +9369,7 @@ BUILDIN_FUNC(mapannounce)
 		return 0;
 
 	map_foreachinmap(buildin_announce_sub, m, BL_PC,
-	                 mes, strlen(mes)+1, flag&0xf0, fontColor, fontType, fontSize, fontAlign, fontY);
+	                 mes, strlen(mes)+1, flag&BC_COLOR_MASK, fontColor, fontType, fontSize, fontAlign, fontY);
 	return 0;
 }
 /*==========================================
@@ -9388,7 +9394,7 @@ BUILDIN_FUNC(areaannounce)
 		return 0;
 
 	map_foreachinarea(buildin_announce_sub, m, x0, y0, x1, y1, BL_PC,
-	                  mes, strlen(mes)+1, flag&0xf0, fontColor, fontType, fontSize, fontAlign, fontY);
+	                  mes, strlen(mes)+1, flag&BC_COLOR_MASK, fontColor, fontType, fontSize, fontAlign, fontY);
 	return 0;
 }
 
@@ -9855,37 +9861,40 @@ BUILDIN_FUNC(homunculus_evolution)
  *------------------------------------------*/
 BUILDIN_FUNC(homunculus_mutate)
 {
-	int homun_id, m_class, m_id, i;
+	int homun_id;
+	enum homun_type m_class, m_id;
 	TBL_PC *sd;
+	bool success = false;
 
 	sd = script_rid2sd(st);
 	if(sd == NULL || sd->hd == NULL)
 		return 0;
+
+	if(sd->hd->homunculus.vaporize == HOM_ST_MORPH) {
+		int i = pc_search_inventory(sd, ITEMID_STRANGE_EMBRYO);
 
 	if(script_hasdata(st,2))
 		homun_id = script_getnum(st,2);
 	else
 		homun_id = 6048 + (rnd() % 4);
 
-	if(sd->hd->homunculus.vaporize == HOM_ST_MORPH) {
 		m_class = hom_class2mapid(sd->hd->homunculus.class_);
 		m_id    = hom_class2mapid(homun_id);
 
-		i = pc_search_inventory(sd, ITEMID_STRANGE_EMBRYO);
 
-		if (m_class != -1 && m_id != -1 && m_class&HOM_EVO && m_id&HOM_S && sd->hd->homunculus.level >= 99 && i >= 0) {
+		if(m_class == HT_EVO && m_id == HT_S &&
+			sd->hd->homunculus.level >= 99 && i >= 0 &&
+			!pc_delitem(sd, i, 1, 0, 0, LOG_TYPE_SCRIPT)) {
 			sd->hd->homunculus.vaporize = HOM_ST_REST; // Remove morph state.
 			merc_call_homunculus(sd); // Respawn homunculus.
 			hom_mutate(sd->hd, homun_id);
-			pc_delitem(sd, i, 1, 0, 0, LOG_TYPE_SCRIPT);
-			script_pushint(st, 1);
-			return 0;
+			success = true;
 		} else
 			clif_emotion(&sd->bl, E_SWT);
 	} else
 		clif_emotion(&sd->bl, E_SWT);
 
-	script_pushint(st, 0);
+	script_pushint(st,success?1:0);
 
 	return 0;
 }
@@ -9896,9 +9905,10 @@ BUILDIN_FUNC(homunculus_mutate)
  *------------------------------------------*/
 BUILDIN_FUNC(morphembryo)
 {
-	struct item item_tmp;
-	int m_class, i=0;
+	enum homun_type m_class;
+	int i = 0;
 	TBL_PC *sd;
+	bool success = false;
 
 	sd = script_rid2sd(st);
 	if(sd == NULL || sd->hd == NULL)
@@ -9907,25 +9917,47 @@ BUILDIN_FUNC(morphembryo)
 	if(merc_is_hom_active(sd->hd)) {
 		m_class = hom_class2mapid(sd->hd->homunculus.class_);
 
-		if (m_class != -1 && m_class&HOM_EVO && sd->hd->homunculus.level >= 99) {
+		if(m_class == HT_EVO && sd->hd->homunculus.level >= 99) {
+			struct item item_tmp;
+
 			memset(&item_tmp, 0, sizeof(item_tmp));
 			item_tmp.nameid = ITEMID_STRANGE_EMBRYO;
 			item_tmp.identify = 1;
 
-			if(item_tmp.nameid == 0 || (i = pc_additem(sd, &item_tmp, 1, LOG_TYPE_SCRIPT))) {
+			if((i = pc_additem(sd, &item_tmp, 1, LOG_TYPE_SCRIPT))) {
 				clif_additem(sd, 0, 0, i);
-				clif_emotion(&sd->bl, E_SWT); // Fail to avoid item drop exploit.
+				clif_emotion(&sd->hd->bl, E_SWT); // Fail to avoid item drop exploit.
 			} else {
 				merc_hom_vaporize(sd, HOM_ST_MORPH);
-				script_pushint(st, 1);
-				return 0;
+				success = true;
 			}
 		} else
 			clif_emotion(&sd->hd->bl, E_SWT);
 	} else
 		clif_emotion(&sd->bl, E_SWT);
 
-	script_pushint(st, 0);
+	script_pushint(st, success?1:0);
+
+	return 0;
+}
+
+/*==========================================
+ * Check for homunculus state.
+ * Return: -1 = No homunculus
+ *          0 = Homunculus is active
+ *          1 = Homunculus is vaporized (rest)
+ *          2 = Homunculus is in morph state
+ *------------------------------------------*/
+BUILDIN_FUNC(checkhomcall)
+{
+	TBL_PC *sd = script_rid2sd(st);
+
+
+	if( sd == NULL || !sd->hd )
+
+		script_pushint(st, -1);
+	else
+		script_pushint(st, sd->hd->homunculus.vaporize);
 
 	return 0;
 }
@@ -9941,31 +9973,6 @@ BUILDIN_FUNC(homunculus_shuffle)
 
 	if(merc_is_hom_active(sd->hd))
 		merc_hom_shuffle(sd->hd);
-
-	return 0;
-}
-
-/*==========================================
- * Check for homunculus state.
- * Return: -1 = No homunculus
- *          0 = Homunculus is active
- *          1 = Homunculus is vaporized (rest)
- *          2 = Homunculus is in morph state
- *------------------------------------------*/
-BUILDIN_FUNC(checkhomcall)
-{
-	TBL_PC *sd = script_rid2sd(st);
-	TBL_HOM *hd;
-
-	if(sd == NULL)
-		return 0;
-
-	hd = sd->hd;
-
-	if(!hd)
-		script_pushint(st, -1);
-	else
-		script_pushint(st, hd->homunculus.vaporize);
 
 	return 0;
 }
@@ -10480,7 +10487,7 @@ BUILDIN_FUNC(getmapflag)
 				/**
 				 * No longer available, keeping here just in case it's back someday. [Ind]
 				 **/
-				//case MF_RAIN:             script_pushint(st,map[m].flag.rain); break;
+			case MF_RAIN:               script_pushint(st,map[m].flag.rain); break;
 			case MF_CLOUDS:             script_pushint(st,map[m].flag.clouds); break;
 			case MF_CLOUDS2:            script_pushint(st,map[m].flag.clouds2); break;
 			case MF_FIREWORKS:          script_pushint(st,map[m].flag.fireworks); break;
@@ -10593,7 +10600,7 @@ BUILDIN_FUNC(setmapflag)
 				/**
 				 * No longer available, keeping here just in case it's back someday. [Ind]
 				 **/
-				//case MF_RAIN:             map[m].flag.rain = 1; break;
+			case MF_RAIN:               map[m].flag.rain = 1; break;
 			case MF_CLOUDS:             map[m].flag.clouds = 1; break;
 			case MF_CLOUDS2:            map[m].flag.clouds2 = 1; break;
 			case MF_FIREWORKS:          map[m].flag.fireworks = 1; break;
@@ -10688,7 +10695,7 @@ BUILDIN_FUNC(removemapflag)
 				/**
 				 * No longer available, keeping here just in case it's back someday. [Ind]
 				 **/
-				//case MF_RAIN:             map[m].flag.rain = 0; break;
+			case MF_RAIN:               map[m].flag.rain = 0; break;
 			case MF_CLOUDS:             map[m].flag.clouds = 0; break;
 			case MF_CLOUDS2:            map[m].flag.clouds2 = 0; break;
 			case MF_FIREWORKS:          map[m].flag.fireworks = 0; break;
@@ -12654,11 +12661,9 @@ BUILDIN_FUNC(getpetinfo)
 BUILDIN_FUNC(gethominfo)
 {
 	TBL_PC *sd=script_rid2sd(st);
-	TBL_HOM *hd;
 	int type=script_getnum(st,2);
 
-	hd = sd?sd->hd:NULL;
-	if(!hd) {
+	if(!sd || !sd->hd) {
 		if(type == 2)
 			script_pushconststr(st,"null");
 		else
@@ -12667,13 +12672,13 @@ BUILDIN_FUNC(gethominfo)
 	}
 
 	switch(type) {
-		case 0: script_pushint(st,hd->homunculus.hom_id); break;
-		case 1: script_pushint(st,hd->homunculus.class_); break;
-		case 2: script_pushstrcopy(st,hd->homunculus.name); break;
-		case 3: script_pushint(st,hd->homunculus.intimacy); break;
-		case 4: script_pushint(st,hd->homunculus.hunger); break;
-		case 5: script_pushint(st,hd->homunculus.rename_flag); break;
-		case 6: script_pushint(st,hd->homunculus.level); break;
+		case 0: script_pushint(st,sd->hd->homunculus.hom_id); break;
+		case 1: script_pushint(st,sd->hd->homunculus.class_); break;
+		case 2: script_pushstrcopy(st,sd->hd->homunculus.name); break;
+		case 3: script_pushint(st,sd->hd->homunculus.intimacy); break;
+		case 4: script_pushint(st,sd->hd->homunculus.hunger); break;
+		case 5: script_pushint(st,sd->hd->homunculus.rename_flag); break;
+		case 6: script_pushint(st,sd->hd->homunculus.level); break;
 		default:
 			script_pushint(st,0);
 			break;
@@ -16418,7 +16423,7 @@ BUILDIN_FUNC(instance_announce)
 
 	for(i = 0; i < instances[instance_id].num_map; i++)
 		map_foreachinmap(buildin_announce_sub, instances[instance_id].map[i], BL_PC,
-						 mes, strlen(mes)+1, flag&0xf0, fontColor, fontType, fontSize, fontAlign, fontY);
+						 mes, strlen(mes)+1, flag&BC_COLOR_MASK, fontColor, fontType, fontSize, fontAlign, fontY);
 
 	return 0;
 }
@@ -17439,6 +17444,83 @@ BUILDIN_FUNC(delequip)
 	return 0;
 }
 
+/* Turns a player into a monster and grants SC attribute effect. [malufett]
+ * montransform <monster name/id>, <duration>, <sc type>, <val1>, <val2>, <val3>, <val4>; */
+BUILDIN_FUNC(montransform) {
+	int tick;
+	enum sc_type type;
+	struct block_list* bl;
+	char msg[CHAT_SIZE_MAX];
+	int mob_id, val1, val2, val3, val4;
+
+	if((bl = map_id2bl(st->rid)) == NULL)
+		return 0;
+
+	if(script_isstring(st, 2))
+		mob_id = mobdb_searchname(script_getstr(st, 2));
+	else{
+		mob_id = mobdb_checkid(script_getnum(st, 2));
+	}
+
+	tick = script_getnum(st, 3);
+	type = (sc_type)script_getnum(st, 4);
+	val1 = val2 = val3 = val4 = 0;
+
+	if(mob_id == 0) {
+		if(script_isstring(st,2))
+			ShowWarning("buildin_montransform: Attempted to use non-existing monster '%s'.\n", script_getstr(st, 2));
+		 else
+			ShowWarning("buildin_montransform: Attempted to use non-existing monster of ID '%d'.\n", script_getnum(st, 2));
+		return 1;
+	}
+
+	if(mob_id == MOBID_EMPERIUM) {
+		ShowWarning("buildin_montransform: Monster 'Emperium' cannot be used.\n");
+		return 1;
+	}
+
+	if(!(type > SC_NONE && type < SC_MAX)) {
+		ShowWarning("buildin_montransform: Unsupported status change id %d\n", type);
+		return 1;
+	}
+
+	if(script_hasdata(st, 5))
+		val1 = script_getnum(st, 5);
+
+	if(script_hasdata(st, 6))
+		val2 = script_getnum(st, 6);
+
+	if(script_hasdata(st, 7))
+		val3 = script_getnum(st, 7);
+
+	if(script_hasdata(st, 8))
+		val4 = script_getnum(st, 8);
+
+	if(tick != 0) {
+		struct map_session_data *sd = map_id2sd(bl->id);
+		struct mob_db *monster =  mob_db(mob_id);
+
+		if(!sd)	return 0;
+
+		if(battle_config.mon_trans_disable_in_gvg && map_flag_gvg2(sd->bl.m)) {
+			clif_displaymessage(sd->fd, msg_txt(1490)); // Transforming into monster is not allowed in Guild Wars.
+			return 0;
+		}
+
+		if(sd->disguise != -1) {
+			clif_displaymessage(sd->fd, msg_txt(1488)); // Cannot transform into monster while in disguise.
+			return 0;
+		}
+
+		sprintf(msg, msg_txt(1487), monster->name); // Traaaansformation-!! %s form!!
+		clif->ShowScript(&sd->bl, msg);
+		status_change_end(bl, SC_MONSTER_TRANSFORM, INVALID_TIMER); // Clear previous
+		sc_start2(bl, SC_MONSTER_TRANSFORM, 100, mob_id, type, tick);
+		sc_start4(bl, type, 100, val1, val2, val3, val4, tick);
+	}
+	return true;
+}
+
 /* Make a player sit/stand.
  * sit {"<character name>"};
  * stand {"<character name>"};
@@ -18075,7 +18157,7 @@ struct script_function buildin_func[] = {
 	BUILDIN_DEF(getequippercentrefinery,"i"),
 	BUILDIN_DEF(successrefitem,"i"),
 	BUILDIN_DEF(failedrefitem,"i"),
-	BUILDIN_DEF(downrefitem,"i"),
+	BUILDIN_DEF(downrefitem,"i?"),
 	BUILDIN_DEF(statusup,"i"),
 	BUILDIN_DEF(statusup2,"ii"),
 	BUILDIN_DEF(bonus,"iv"),
@@ -18471,6 +18553,7 @@ struct script_function buildin_func[] = {
 	BUILDIN_DEF(qiclear,"i"),
 
 	BUILDIN_DEF(CreatePackage,"?"),
+	BUILDIN_DEF(montransform, "vii????"),
 
 	/* New BG Commands */
 	BUILDIN_DEF(bg_create_team,"sii"),

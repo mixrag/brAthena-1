@@ -364,8 +364,10 @@ static void itemdb_jobid2mapid(unsigned int *bclass, unsigned int jobmask)
 		bclass[1] |= 1<<MAPID_TAEKWON;
 	if(jobmask & 1<<23)  //Soul Linker
 		bclass[2] |= 1<<MAPID_TAEKWON;
-	if(jobmask & 1<<JOB_GUNSLINGER)
+	if(jobmask & 1<<JOB_GUNSLINGER) {// Rebellion job can equip Gunslinger equips
 		bclass[0] |= 1<<MAPID_GUNSLINGER;
+		bclass[1] |= 1<<MAPID_GUNSLINGER;
+	}
 	if(jobmask & 1<<JOB_NINJA) {
 		bclass[0] |= 1<<MAPID_NINJA;
 		bclass[1] |= 1<<MAPID_NINJA;
@@ -378,6 +380,8 @@ static void itemdb_jobid2mapid(unsigned int *bclass, unsigned int jobmask)
 		bclass[2] |= 1<<MAPID_GANGSI;
 	if(jobmask & 1<<29)  //Kagerou / Oboro
 		bclass[1] |= 1<<MAPID_NINJA;
+	if(jobmask & 1<<30) //Rebellion
+		bclass[1] |= 1<<MAPID_GUNSLINGER;
 }
 
 static void create_dummy_data(void)
@@ -1672,10 +1676,16 @@ int itemdb_uid_load()
 static void itemdb_read(void)
 {
 	int i;
+	DBData prev;
 	itemdb_read_sqldb();
-	for(i = 0; i < ARRAYLENGTH(itemdb_array); ++i)
-		if(itemdb_array[i])
-			strdb_put(itemdb->names, itemdb_array[i]->name, itemdb_array[i]);
+	for(i = 0; i < ARRAYLENGTH(itemdb_array); ++i) {
+		if(itemdb_array[i]) {
+			if(itemdb->names->put(itemdb->names,db_str2key(itemdb_array[i]->name),db_ptr2data(itemdb_array[i]),&prev)) {
+				struct item_data *data = db_data2ptr(&prev);
+				ShowError("itemdb_read: duplicate AegisName '%s' in item ID %d and %d\n",itemdb_array[i]->name,itemdb_array[i]->nameid,data->nameid);
+			}
+		}
+	}
 
 	itemdb_read_combos();
 	itemdb_read_itemgroup();
