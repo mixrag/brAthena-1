@@ -30,30 +30,30 @@
 
 	set(.@version, checkversion(0));
 		
-	if (.@version == 0) { // Pré-Renovação
+	if (!.@version) { // Pré-Renovação
 		movenpc("Locador de Mercenários#Espadachim",47,139);
 		movenpc("Artigos para Mercenários#Espadachim",56,139);
+		movenpc("Auxiliar Lua de Mel",171,185,3);
+		movenpc("Scamp#iz",186,57,5);
+		movenpc("Funcionária Kafra#iz",134,88,3);
 	}
 
 	if (.@version != -1) { // Pré-Renovação & Renovação
 		movenpc("Talpiz#BLS",214,79);
 	}
 
-	if (!.@version) { // Pré-Renovação & Old-Times
+	if (!.@version || .@version == -1) { // Pré-Renovação & Old-Times
 		movenpc("Dega#izlude",150,118,2);
 		movenpc("Kylick#izlude",150,143,2);
 		movenpc("Red#izlude",56,126);
 		movenpc("Cebalis#izlude",58,126);
 		movenpc("Soldado#izlude",124,178,4);
-		movenpc("Auxiliar Lua de Mel",171,185,3);
 		movenpc("Açougueiro#iz",105,99);
 		movenpc("Vendedora de Frutas#iz",94,98);
 		movenpc("Vendedora de Leite#i",105,92,7);
 		movenpc("Loja de Bichinhos#iz",164,138);
-		movenpc("Scamp#iz",186,57,5);
 		movenpc("Dona Risadinha#iz",129,118);
 		movenpc("Sr. Noel",168,168);
-		movenpc("Funcionária Kafra#iz",134,87,3);
 	}
 
 	end();
@@ -166,22 +166,22 @@ function	script	Job_Change	{
 //////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////
-// *** Function "F_RandMes"
+// *** Function "F_Rand"
 //////////////////////////////////////////////////////////////////////////////////
-//returns random string
+//returns random argument
 // Example: check F_Bye or F_Hi functions
-// READ AND THINK: You can use it to pick a random number form list:
-// set @itemIDfromList, callfunc("F_RandMes",8,1129,1222,1163,1357,1360,1522,1811,1410);
+// READ AND THINK: You can use it to pick a random number from a list:
+// set @itemIDfromList, callfunc("F_Rand",1129,1222,1163,1357,1360,1522,1811,1410);
 
-function	script	F_RandMes	{
-	return getarg(rand(1,getarg(0)));
+function	script	F_Rand	{
+	return getarg(rand(getargcount()));
 }
 
 
 //////////////////////////////////////////////////////////////////////////////////
 // *** Function "F_Sex"
 //////////////////////////////////////////////////////////////////////////////////
-//returns 1st string if female, 2nd string otherwise
+//returns 1st argument if female, 2nd argument otherwise
 // Example: mes callfunc("F_Sex","What a beautiful lady!","What a handsome man!");
 
 function	script	F_SexMes	{
@@ -195,7 +195,7 @@ function	script	F_SexMes	{
 //returns random HELLO message
 
 function	script	F_Hi	{
-	return callfunc("F_RandMes",5,"Hi!","Hello!","Good day!","How are you?","Hello there.");
+	return callfunc("F_Rand","Hi!","Hello!","Good day!","How are you?","Hello there.");
 }
 
 
@@ -205,7 +205,7 @@ function	script	F_Hi	{
 //returns random BYE message
 
 function	script	F_Bye	{
-	return callfunc("F_RandMes",6,"Bye. See you again.","Later.","Goodbye.","Good luck!","Have a nice day!","Byebye!!!");
+	return callfunc("F_Rand","Bye. See you again.","Later.","Goodbye.","Good luck!","Have a nice day!","Byebye!!!");
 }
 
 
@@ -401,51 +401,5 @@ function	script	F_Navi	{
 			return getarg(2)+getarg(0)+"^000000";
 		else
 			return getarg(0);
-	}
-}
-
-//////////////////////////////////////////////////////////////////////////////////
-// *** Função "F_GM_NPC": Controla os NPCs de Administração em certos scripts.
-//////////////////////////////////////////////////////////////////////////////////
-
-// callfunc("F_GM_NPC"{,<password>,<0:int | 1:str>{,<min>,<max>}})
-function	script	F_GM_NPC	{
-
-	// Para desativar todos os NPCs de Administração descomente a linha abaixo.
-	//end;
-
-	// Defina o groupid mínimo para acessar os NPCs na linha abaixo.
-	if (getgroupid() < 99) {
-		getmapxy(.@map$,.@x,.@y,1);
-		logmes strcharinfo(0)+" tentou acessar o NPCs de Administração "+strnpcinfo(0)+" ("+.@map$+","+.@x+","+.@y+").";
-		end;
-	}
-
-	if (!getargcount()) return;
-
-	// Para desativar as senhas, descomente a linha abaixo.
-	//return 1;
-
-	// Valores de retorno:
-	//  1: senha correta
-	//  0: senha incorreta
-	// -1: zero/cancelado
-	// -2: fora do limite
-	if (getarg(1) == 0) {
-		// Senha numérica
-		if (getarg(3,0)) {
-			set .@error, input(.@input,getarg(2),getarg(3));
-			if (.@error)
-				return -2;
-		} else
-			input .@input;
-		if (.@input == 0)
-			return -1;
-		else
-			return (.@input == getarg(0))?1:0;
-	} else {
-		// Senha
-		input .@inputstr$;
-		return (.@inputstr$ == getarg(0))?1:0;
 	}
 }

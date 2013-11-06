@@ -58,6 +58,12 @@ enum equip_index {
 	EQI_COSTUME_LOW,
 	EQI_COSTUME_GARMENT,
 	EQI_AMMO,
+	EQI_SHADOW_ARMOR,
+	EQI_SHADOW_WEAPON,
+	EQI_SHADOW_SHIELD,
+	EQI_SHADOW_SHOES,
+	EQI_SHADOW_ACC_R,
+	EQI_SHADOW_ACC_L,
 	EQI_MAX
 };
 
@@ -181,6 +187,7 @@ struct map_session_data {
 		short pmap; // Previous map on Map Change
 		unsigned short autoloot;
 		unsigned short autolootid[AUTOLOOTITEM_SIZE]; // [Zephyrus]
+		unsigned short autoloottype;
 		unsigned int autolooting : 1; //performance-saver, autolooting state for @alootid
 		unsigned short autobonus; //flag to indicate if an autobonus is activated. [Inkfish]
 		unsigned int gmaster_flag : 1;
@@ -192,6 +199,7 @@ struct map_session_data {
 		unsigned int workinprogress : 3; // 1 = disable skill/item, 2 = disable npc interaction, 3 = disable both
 		unsigned int hold_recalc : 1;
 		unsigned int snovice_call_flag : 3; //Summon Angel (stage 1~3)
+		unsigned int hpmeter_visible : 1;
 	} state;
 	struct {
 		unsigned char no_weapon_damage, no_magic_damage, no_misc_damage;
@@ -250,7 +258,7 @@ struct map_session_data {
 	uint16 skill_id_old,skill_lv_old;
 	uint16 skill_id_dance,skill_lv_dance;
 	short cook_mastery; // range: [0,1999] [Inkfish]
-	unsigned char blockskill[MAX_SKILL];
+	bool blockskill[MAX_SKILL];
 	int cloneskill_id, reproduceskill_id;
 	int menuskill_id, menuskill_val, menuskill_val2;
 
@@ -484,7 +492,6 @@ struct map_session_data {
 	const char *debug_func;
 
 	unsigned int bg_id;
-	unsigned short user_font;
 
 	/**
 	 * For the Secure NPC Timeout option (check config/Secure.h) [RR]
@@ -560,6 +567,7 @@ struct map_session_data {
 	const char *delunit_prevfile;
 	int delunit_prevline;
 
+	int vip_timer;
 };
 
 struct eri *pc_sc_display_ers;
@@ -616,28 +624,28 @@ enum ammo_type {
 
 //Equip position constants
 enum equip_pos {
-	EQP_HEAD_LOW         = 0x0001,
-	EQP_HEAD_MID         = 0x0200, //512
-	EQP_HEAD_TOP         = 0x0100, //256
-	EQP_HAND_R           = 0x0002, //2
-	EQP_HAND_L           = 0x0020, //32
-	EQP_ARMOR            = 0x0010, //16
-	EQP_SHOES            = 0x0040, //64
-	EQP_GARMENT          = 0x0004, //4
-	EQP_ACC_L            = 0x0008, //8
-	EQP_ACC_R            = 0x0080, //128
-	EQP_COSTUME_HEAD_TOP = 0x0400, //1024
-	EQP_COSTUME_HEAD_MID = 0x0800, //2048
-	EQP_COSTUME_HEAD_LOW = 0x1000, //4096
-	EQP_COSTUME_GARMENT	 = 0x2000, //8192
-	EQP_AMMO             = 0x8000, //32768
-	//EQP_COSTUME_FLOOR  = 0x4000,
-	//EQP_SHADOW_ARMOR   = 0x10000,//Shadow equip slots will be left disabled until client's supporting them are usable. [Rytech]
-	//EQP_SHADOW_WEAPON  = 0x20000,
-	//EQP_SHADOW_SHIELD  = 0x40000,
-	//EQP_SHADOW_SHOES   = 0x80000,
-	//EQP_SHADOW_ACC_R   = 0x100000,
-	//EQP_SHADOW_ACC_L   = 0x200000,
+	EQP_HEAD_LOW           = 0x000001,
+	EQP_HEAD_MID           = 0x000200, //512
+	EQP_HEAD_TOP           = 0x000100, //256
+	EQP_HAND_R             = 0x000002, //2
+	EQP_HAND_L             = 0x000020, //32
+	EQP_ARMOR              = 0x000010, //16
+	EQP_SHOES              = 0x000040, //64
+	EQP_GARMENT            = 0x000004, //4
+	EQP_ACC_L              = 0x000008, //8
+	EQP_ACC_R              = 0x000080, //128
+	EQP_COSTUME_HEAD_TOP   = 0x000400, //1024
+	EQP_COSTUME_HEAD_MID   = 0x000800, //2048
+	EQP_COSTUME_HEAD_LOW   = 0x001000, //4096
+	EQP_COSTUME_GARMENT    = 0x002000, //8192
+	//UNUSED_COSTUME_FLOOR = 0x004000, //16384
+	EQP_AMMO               = 0x008000, //32768
+	EQP_SHADOW_ARMOR       = 0x010000, //65536
+	EQP_SHADOW_WEAPON      = 0x020000, //131072
+	EQP_SHADOW_SHIELD      = 0x040000, //262144
+	EQP_SHADOW_SHOES       = 0x080000, //524288
+	EQP_SHADOW_ACC_R       = 0x100000, //1048576
+	EQP_SHADOW_ACC_L       = 0x200000, //2097152
 };
 
 #define EQP_WEAPON EQP_HAND_R
@@ -936,6 +944,8 @@ void pc_bank_withdraw(struct map_session_data *sd, int money);
 
 const char *job_name(int class_);
 
+unsigned int equip_pos[EQI_MAX];
+
 struct skill_tree_entry {
 	short id;
 	unsigned short idx;
@@ -1007,7 +1017,28 @@ int pc_del_charm(struct map_session_data *sd,int count,int type);
 
 void pc_baselevelchanged(struct map_session_data *sd);
 
-#define pc_isvip(sd) ((sd->group_id==bra_config.level_vip?1:0)) // Verificação vip de forma rápida.
+void pc_rental_expire(struct map_session_data *sd, int i);
+void pc_scdata_received(struct map_session_data *sd);
+
+//----------------------------------
+// Sistema Vip [Shiraz / brAthena]
+// Macros e Funções
+//----------------------------------
+// Verifica se o jogador é vip.
+#define pc_isvip(sd) ((sd->group_id==bra_config.level_vip))
+
+// Delay para verificação do vip em tempo real. Padrão a cada 1 minuto.
+#define DELAY_IN(x) (x * 60000)
+
+// Salva e atualiza as informações de um vip.
+#define save_vip(sd,x) \
+	sd->group_id = x; pc_group_pc_load(sd); \
+		if(SQL_ERROR == Sql_Query(mmysql_handle,"UPDATE `login` SET `group_id`=%d WHERE `account_id`='%d'", x, sd->status.account_id)) \
+			Sql_ShowDebug(mmysql_handle);
+
+int check_time_vip(int tid, unsigned int tick, int id, intptr_t data);
+int add_time_vip(struct map_session_data *sd, int type[4]);
+void show_time_vip(struct map_session_data *sd);
 
 #if defined(RENEWAL_DROP) || defined(RENEWAL_EXP)
 int pc_level_penalty_mod(int diff, unsigned char race, unsigned short mode, int type);

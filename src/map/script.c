@@ -419,6 +419,7 @@ enum {
     MF_RESET,
     MF_SET_CASTLE,
     MF_NOTOMB,
+    MF_NOCASHSHOP,
 };
 
 const char *script_op2name(int op)
@@ -2307,9 +2308,9 @@ void script_errorwarning_sub(StringBuf *buf, const char *src, const char *file, 
 	}
 
 	if(line >= 0)
-		StringBuf_Printf(buf, "script error on %s line %d\n", file, line);
+		StringBuf_Printf(buf, "script error in file '%s' line %d\n", file, line);
 	else
-		StringBuf_Printf(buf, "script error on %s item ID %d\n", file, -line);
+		StringBuf_Printf(buf, "script error in file '%s' item ID %d\n", file, -line);
 
 	StringBuf_Printf(buf, "    %s\n", error_msg);
 	for(j = 0; j < 5; j++) {
@@ -7175,8 +7176,8 @@ BUILDIN_FUNC(strnpcinfo)
 
 
 // aegis->athena slot position conversion table
-static unsigned int equip[] = {EQP_HEAD_TOP,EQP_ARMOR,EQP_HAND_L,EQP_HAND_R,EQP_GARMENT,EQP_SHOES,EQP_ACC_L,EQP_ACC_R,EQP_HEAD_MID,EQP_HEAD_LOW,EQP_COSTUME_HEAD_LOW,EQP_COSTUME_HEAD_MID,EQP_COSTUME_HEAD_TOP,EQP_COSTUME_GARMENT};
-
+ unsigned int equip[SCRIPT_EQUIP_TABLE_SIZE] = {EQP_HEAD_TOP,EQP_ARMOR,EQP_HAND_L,EQP_HAND_R,EQP_GARMENT,EQP_SHOES,EQP_ACC_L,EQP_ACC_R,EQP_HEAD_MID,EQP_HEAD_LOW,EQP_COSTUME_HEAD_LOW,EQP_COSTUME_HEAD_MID,EQP_COSTUME_HEAD_TOP,EQP_COSTUME_GARMENT,EQP_SHADOW_ARMOR, EQP_SHADOW_WEAPON, EQP_SHADOW_SHIELD, EQP_SHADOW_SHOES, EQP_SHADOW_ACC_R, EQP_SHADOW_ACC_L};
+ 
 /*==========================================
  * GetEquipID(Pos);     Pos: 1-SCRIPT_EQUIP_TABLE_SIZE
  *------------------------------------------*/
@@ -7690,9 +7691,14 @@ BUILDIN_FUNC(bonus)
 		case SP_VARCASTRATE:
 		case SP_FIXCASTRATE:
 		case SP_SKILL_USE_SP:
-			// these bonuses support skill names
+			// estes bonus suportam nomes de habilidades
 			val1 = (script_isstring(st,3) ? skill_name2id(script_getstr(st,3)) : script_getnum(st,3));
 			break;
+		case SP_ADD_DAMAGE_CLASS:
+  		case SP_ADD_MAGIC_DAMAGE_CLASS:
+   			// estes bonus suportam nome de monstros
+   			val1 = (script_isstring(st,3) ? mobdb_searchname(script_getstr(st,3)) : script_getnum(st,3));
+   			break;
 		default:
 			val1 = script_getnum(st,3);
 			break;
@@ -10519,6 +10525,7 @@ BUILDIN_FUNC(getmapflag)
 			case MF_RESET:              script_pushint(st,map[m].flag.reset); break;
 			case MF_SET_CASTLE:         script_pushint(st,map[m].set_castle); break;
 			case MF_NOTOMB:		    script_pushint(st,map[m].flag.notomb); break;
+			case MF_NOCASHSHOP:         script_pushint(st,map[m].flag.nocashshop); break;
 		}
 	}
 
@@ -10639,6 +10646,7 @@ BUILDIN_FUNC(setmapflag)
 			case MF_BATTLEGROUND:       map[m].flag.battleground = (val <= 0 || val > 2) ? 1 : val; break;
 			case MF_RESET:              map[m].flag.reset = 1; break;
 			case MF_NOTOMB:		    map[m].flag.notomb = 1; break;
+			case MF_NOCASHSHOP:         map[m].flag.nocashshop = 1; break;
 		}
 	}
 
@@ -10729,6 +10737,7 @@ BUILDIN_FUNC(removemapflag)
 			case MF_BATTLEGROUND:       map[m].flag.battleground = 0; break;
 			case MF_RESET:              map[m].flag.reset = 0; break;
 			case MF_NOTOMB:		    map[m].flag.notomb = 0; break;
+			case MF_NOCASHSHOP:         map[m].flag.nocashshop = 0; break;
 		}
 	}
 
@@ -12424,7 +12433,7 @@ BUILDIN_FUNC(nude)
 	}
 
 	if(calcflag)
-		status_calc_pc(sd,0);
+		status_calc_pc(sd,SCO_NONE);
 
 	return 0;
 }
@@ -12875,9 +12884,9 @@ BUILDIN_FUNC(npcwalkto)
 	if(nd) {
 		unit_bl2ud2(&nd->bl); // ensure nd->ud is safe to edit
 		if (!nd->status.hp) {
-			status_calc_npc(nd, true);
+			status_calc_npc(nd, SCO_FIRST);
 		} else {
-			status_calc_npc(nd, false);
+			status_calc_npc(nd, SCO_NONE);
 		}
 		unit_walktoxy(&nd->bl,x,y,0);
 	}
@@ -14458,7 +14467,7 @@ int buildin_query_sql_sub(struct script_state *st, Sql *handle)
 
 	if(SQL_ERROR == Sql_QueryStr(handle, query)) {
 		Sql_ShowDebug(handle);
-		script_pushint(st, 0);
+		st->state = END;
 		return 1;
 	}
 
@@ -15426,9 +15435,9 @@ BUILDIN_FUNC(unitskilluseid)
 	if(bl != NULL) {
 		if(bl->type == BL_NPC) {
 			if (!((TBL_NPC*)bl)->status.hp) {
-				status_calc_npc(((TBL_NPC*)bl), true);
+				status_calc_npc(((TBL_NPC*)bl), SCO_FIRST);
 			} else {
-				status_calc_npc(((TBL_NPC*)bl), false);
+				status_calc_npc(((TBL_NPC*)bl), SCO_NONE);
 			}
 		}
 		unit_skilluse_id(bl, target_id, skill_id, skill_lv);
@@ -15461,9 +15470,9 @@ BUILDIN_FUNC(unitskillusepos)
 	if(bl != NULL) {
 		if(bl->type == BL_NPC) {
 			if (!((TBL_NPC*)bl)->status.hp) {
-				status_calc_npc(((TBL_NPC*)bl), true);
+				status_calc_npc(((TBL_NPC*)bl), SCO_FIRST);
 			} else {
-				status_calc_npc(((TBL_NPC*)bl), false);
+				status_calc_npc(((TBL_NPC*)bl), SCO_NONE);
 			}
 		}
 		unit_skilluse_pos(bl, skill_x, skill_y, skill_id, skill_lv);
@@ -15924,12 +15933,82 @@ BUILDIN_FUNC(readbook)
 Questlog script commands
 *******************/
 
+BUILDIN_FUNC(questinfo)
+{
+	struct npc_data *nd = map_id2nd(st->oid);
+	int quest, icon, job, color = 0;
+	struct questinfo qi;
+
+	if(nd == NULL || nd->bl.m == -1)
+		return true;
+
+	quest = script_getnum(st, 2);
+	icon = script_getnum(st, 3);
+
+	#if PACKETVER >= 20120410
+		if(icon < 0 || (icon > 8 && icon != 9999) || icon == 7)
+			icon = 9999;	// Default to nothing if icon id is invalid.
+	#else
+		if(icon < 0 || icon > 7)
+			icon = 0;
+		else
+			icon = icon + 1;
+	#endif
+
+	qi.quest_id = quest;
+	qi.icon = (unsigned char)icon;
+	qi.nd = nd;
+
+	if(script_hasdata(st, 4)) {
+		color = script_getnum(st, 4);
+		if(color < 0 || color > 3) {
+			ShowWarning("buildin_questinfo: invalid color '%d', changing to 0\n",color);
+			script_reportfunc(st);
+			color = 0;
+		}
+		qi.color = (unsigned char)color;
+	}
+
+	qi.hasJob = false;
+
+	if(script_hasdata(st, 5)) {
+		job = script_getnum(st, 5);
+
+		if (!pcdb_checkid(job))
+			ShowError("buildin_questinfo: Nonexistant Job Class.\n");
+		else {
+			qi.hasJob = true;
+			qi.job = (unsigned short)job;
+		}
+	}
+	
+	map_add_questinfo(nd->bl.m,&qi);
+
+	return 0;
+}
+
 BUILDIN_FUNC(setquest)
 {
 	struct map_session_data *sd = script_rid2sd(st);
-	nullpo_ret(sd);
+	unsigned short i;
+
+	if (!sd)
+		return 1;
 
 	quest_add(sd, script_getnum(st, 2));
+
+	// If questinfo is set, remove quest bubble once quest is set.
+	for(i = 0; i < map[sd->bl.m].qi_count; i++) {
+		struct questinfo *qi = &map[sd->bl.m].qi_data[i];
+		if(qi->quest_id == script_getnum(st, 2)) {
+#if PACKETVER >= 20120410
+			clif_quest_show_event(sd, &qi->nd->bl, 9999, 0);
+#else
+			clif_quest_show_event(sd, &qi->nd->bl, 0, 0);
+#endif
+		}
+	}
+
 	return 0;
 }
 
@@ -15979,17 +16058,32 @@ BUILDIN_FUNC(showevent)
 {
 	TBL_PC *sd = script_rid2sd(st);
 	struct npc_data *nd = map_id2nd(st->oid);
-	int state, color;
+	int icon, color = 0;
 
 	if(sd == NULL || nd == NULL)
 		return 0;
-	state = script_getnum(st, 2);
-	color = script_getnum(st, 3);
+	icon = script_getnum(st, 2);
+	if(script_hasdata(st, 3)) {
+		color = script_getnum(st, 3);
 
-	if(color < 0 || color > 3)
-		color = 0; // set default color
+		if(color < 0 || color > 3) {
+			ShowWarning("buildin_showevent: invalid color '%d', changing to 0\n",color);
+			script_reportfunc(st);
+			color = 0;
+		}
+	}
 
-	clif_quest_show_event(sd, &nd->bl, state, color);
+	#if PACKETVER >= 20120410
+		if(icon < 0 || (icon > 8 && icon != 9999) || icon == 7)
+			icon = 9999;	// Default to nothing if icon id is invalid.
+	#else
+		if(icon < 0 || icon > 7)
+			icon = 0;
+		else
+			icon = icon + 1;
+	#endif
+
+	clif_quest_show_event(sd, &nd->bl, icon, color);
 	return 0;
 }
 
@@ -16625,10 +16719,10 @@ BUILDIN_FUNC(setfont)
 	if(sd == NULL)
 		return 0;
 
-	if(sd->user_font != font)
-		sd->user_font = font;
+	if(sd->status.font != font)
+		sd->status.font = font;
 	else
-		sd->user_font = 0;
+		sd->status.font = 0;
 
 	clif_font(sd);
 	return 0;
@@ -17366,9 +17460,9 @@ BUILDIN_FUNC(npcskill)
 	nd->stat_point = stat_point;
 
 	if(!nd->status.hp) {
-		status_calc_npc(nd, true);
+		status_calc_npc(nd, SCO_FIRST);
 	} else {
-		status_calc_npc(nd, false);
+		status_calc_npc(nd, SCO_NONE);
 	}
 
 	if(skill_get_inf(skill_id)&INF_GROUND_SKILL) {
@@ -17518,7 +17612,7 @@ BUILDIN_FUNC(montransform) {
 		sc_start2(bl, SC_MONSTER_TRANSFORM, 100, mob_id, type, tick);
 		sc_start4(bl, type, 100, val1, val2, val3, val4, tick);
 	}
-	return true;
+	return 0;
 }
 
 /* Make a player sit/stand.
@@ -18068,6 +18162,105 @@ BUILDIN_FUNC(bg_match_over) {
 	return 0;
 }
 
+BUILDIN_FUNC(instance_mapname) {
+ 	const char *map_name;
+	int m;
+	short instance_id = -1;
+
+ 	map_name = script_getstr(st,2);
+
+	if(script_hasdata(st,3))
+		instance_id = script_getnum(st,3);
+	else
+		instance_id = st->instance_id;
+
+	// Check that instance mapname is a valid map
+	if(instance_id == -1 || (m = instance->mapname2imap(map_name,instance_id)) == -1)
+		script_pushconststr(st, "");
+	else
+		script_pushconststr(st, map[m].name);
+
+	return 0;
+}
+/* modify an instances' reload-spawn point */
+/* instance_set_respawn <map_name>,<x>,<y>{,<instance_id>} */
+/* returns 1 when successful, 0 otherwise. */
+BUILDIN_FUNC(instance_set_respawn) {
+	const char *map_name;
+	short instance_id = -1;
+	short mid;
+	short x,y;
+
+	map_name = script_getstr(st,2);
+	x = script_getnum(st, 3);
+	y = script_getnum(st, 4);
+
+	if(script_hasdata(st, 5))
+		instance_id = script_getnum(st, 5);
+	else
+		instance_id = st->instance_id;
+
+	if(instance_id == -1 || !instance->valid(instance_id))
+		script_pushint(st, 0);
+	else if((mid = map_mapname2mapid(map_name)) == -1) {
+		ShowError("buildin_instance_set_respawn: unknown map '%s'\n",map_name);
+		script_pushint(st, 0);
+	} else {
+		int i;
+		
+		for(i = 0; i < instances[instance_id].num_map; i++) {
+			if(map[instances[instance_id].map[i]].m == mid ) {
+				instances[instance_id].respawn.map = map_id2index(mid);
+				instances[instance_id].respawn.x = x;
+				instances[instance_id].respawn.y = y;
+				break;
+			}
+		}
+		
+		if(i != instances[instance_id].num_map)
+			script_pushint(st, 1);
+		else {
+			ShowError("buildin_instance_set_respawn: map '%s' not part of instance '%s'\n",map_name,instances[instance_id].name);
+			script_pushint(st, 0);
+		}
+	}
+	
+	
+	return 0;
+}
+
+/*======================================================
+ * Adiciona tempo vip. [Shiraz / brAthena]
+ * ex: add_time_vip(dias, horas, minutos, segundos);
+ *-----------------------------------------------------*/
+BUILDIN_FUNC(add_time_vip) {
+	int time_s[4], i;
+	TBL_PC *sd;
+	
+	if(!(sd = script_rid2sd(st)))
+		return -1;
+		
+	for(i = 0; i < 4; i++)
+		time_s[i] = script_getnum(st,2+i);
+		
+	add_time_vip(sd, time_s);
+	return 0;
+}
+
+/*======================================================
+ * Exibe tempo vip. [Shiraz / brAthena]
+ * ex: show_time_vip();
+ *-----------------------------------------------------*/
+BUILDIN_FUNC(show_time_vip) {
+	TBL_PC *sd;
+	
+	if(!(sd = script_rid2sd(st)))
+		return -1;
+
+	show_time_vip(sd);
+	return 0;
+}
+
 #include "../custom/scripts.inc"
 
 // declarations that were supposed to be exported from npc_chat.c
@@ -18498,6 +18691,9 @@ struct script_function buildin_func[] = {
 	BUILDIN_DEF(has_instance,"s?"),
 	BUILDIN_DEF(instance_warpall,"sii?"),
 	BUILDIN_DEF(instance_check_party,"i???"),
+	BUILDIN_DEF(instance_mapname,"s?"),
+	BUILDIN_DEF(instance_set_respawn,"sii?"),
+
 	/**
 	 * 3rd-related
 	 **/
@@ -18532,12 +18728,13 @@ struct script_function buildin_func[] = {
 	BUILDIN_DEF(useatcmd, "s"),
 
 	//Quest Log System [Inkfish]
+	BUILDIN_DEF(questinfo, "ii??"),
 	BUILDIN_DEF(setquest, "i"),
 	BUILDIN_DEF(erasequest, "i"),
 	BUILDIN_DEF(completequest, "i"),
 	BUILDIN_DEF(checkquest, "i?"),
 	BUILDIN_DEF(changequest, "ii"),
-	BUILDIN_DEF(showevent, "ii"),
+	BUILDIN_DEF(showevent, "i?"),
 	/**
 	*hQueue [Ind]
 	**/
@@ -18563,6 +18760,8 @@ struct script_function buildin_func[] = {
   /* [brAthena] */
 	BUILDIN_DEF(unloadnpc,"s"),	// [Holy]
 	BUILDIN_DEF(recall,"s?"),	// [Holy]
+	BUILDIN_DEF(add_time_vip,"iiii"),	// [Shiraz]
+	BUILDIN_DEF(show_time_vip,"?"),		// [Shiraz]
 
 #include "../custom/scripts_def.inc"
 

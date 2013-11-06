@@ -59,7 +59,6 @@ int status_get_refine_chance(enum refine_type wlv, int refine);
 // Status changes listing. These code are for use by the server.
 typedef enum sc_type {
     SC_NONE = -1,
-
 	//First we enumerate common status ailments which are often used around.
     SC_STONE = 0,
     SC_COMMON_MIN = 0, // begin
@@ -336,7 +335,6 @@ typedef enum sc_type {
     SC_PROTECT_DEF,
 	//SC_SPREGEN,
     SC_WALKSPEED = 278,
-
 	// Mercenary Only Bonus Effects
     SC_MER_FLEE,
     SC_MER_ATK, //280
@@ -344,7 +342,6 @@ typedef enum sc_type {
     SC_MER_SP,
     SC_MER_HIT,
     SC_MER_QUICKEN,
-
     SC_REBIRTH,
 	//SC_SKILLCASTRATE, //286
 	//SC_DEFRATIOATK,
@@ -657,7 +654,6 @@ typedef enum sc_type {
 
 	//homon S
     SC_STYLE_CHANGE,
-
     SC_GOLDENE_FERSE,
     SC_ANGRIFFS_MODUS,
     SC_ERASER_CUTTER,
@@ -695,17 +691,20 @@ typedef enum sc_type {
     SC_ANGEL_PROTECT,
     SC_ILLUSIONDOPING,
 
-    //homon S
-    SC_TINDER_BREAKER,
-    SC_TINDER_BREAKER2,
-    SC_CBC,
-    SC_EQC,
-
     SC_MTF_ASPD,
     SC_MTF_RANGEATK,
     SC_MTF_MATK,
     SC_MTF_MLEATKED,
     SC_MTF_CRIDAMAGE,
+
+    SC_MOONSTAR,
+    SC_SUPER_STAR,
+
+    //homon S
+    SC_TINDER_BREAKER,
+    SC_TINDER_BREAKER2,
+    SC_CBC,
+    SC_EQC,
 
     // Pergaminhos e itens[Megasantos]
     SC_MVPCARD_TAOGUNKA = 800,
@@ -714,6 +713,34 @@ typedef enum sc_type {
     SC_MVPCARD_ORCLORD,
     SC_ACARAJE,
     SC_ATTHASTE_CASH,
+    SC_ATKER_ASPD,
+    SC_TARGET_ASPD,
+    SC_ATKER_MOVESPEED,
+    SC_STEAMPACK,
+    SC_BUCHEDENOEL,
+    SC_POPECOOKIE,
+    SC_MAGIC_CANDY,
+    SC_MORA_BUFF,
+    SC_VITALIZE_POTION,
+    SC_G_LIFEPOTION,
+    SC_2011RWC,
+    SC_SKELSCROLL,
+    SC_DISTRUCTIONSCROLL,
+    SC_ROYALSCROLL,
+    SC_IMMUNITYSCROLL,
+    SC_MYSTICSCROLL,
+    SC_BATTLESCROLL,
+    SC_ARMORSCROLL,
+    SC_FREYJASCROLL,
+    SC_SOULSCROLL,
+    SC_PC_IZ_DUN05,
+    SC_OVERLAPEXPUP,
+    SC_SKF_CAST,
+    SC_SKF_ASPD,
+    SC_SKF_ATK,
+    SC_SKF_MATK,
+    SC_GM_BATTLE,
+    SC_GM_BATTLE2,
 
     SC_MAX, //Automatically updated max, used in for's to check we are within bounds.
 } sc_type;
@@ -1019,14 +1046,14 @@ enum si_type {
     SI_CRITICALPERCENT		= 295, 
     SI_PLUSAVOIDVALUE		= 296, 
     SI_ATKER_ASPD = 297,
-//  SI_TARGET_ASPD = 298,
+    SI_TARGET_ASPD = 298,
     SI_ATKER_MOVESPEED = 299,
     SI_ATKER_BLOOD = 300,
     SI_TARGET_BLOOD = 301,
     SI_ARMOR_PROPERTY = 302,
 //  SI_REUSE_LIMIT_A = 303,
     SI_HELLPOWER = 304,
-//  SI_STEAMPACK = 305,
+    SI_STEAMPACK = 305,
 //  SI_REUSE_LIMIT_B = 306,
 //  SI_REUSE_LIMIT_C = 307,
 //  SI_REUSE_LIMIT_D = 308,
@@ -1662,6 +1689,20 @@ enum scb_flag {
     SCB_ALL     = 0x3FFFFFFF
 };
 
+//Regen related flags.
+enum e_regen {
+	RGN_HP  = 0x01,
+	RGN_SP  = 0x02,
+	RGN_SHP = 0x04,
+	RGN_SSP = 0x08,
+};
+
+enum e_status_calc_opt {
+	SCO_NONE  = 0x0,
+	SCO_FIRST = 0x1, /* trigger the calculations that should take place only onspawn/once */
+	SCO_FORCE = 0x2, /* only relevant to BL_PC types, ensures call bypasses the queue caused by delayed damage */
+};
+
 //Define to determine who gets HP/SP consumed on doing skills/etc. [Skotlex]
 #define BL_CONSUME (BL_PC|BL_HOM|BL_MER|BL_ELEM)
 //Define to determine who has regen
@@ -1702,7 +1743,7 @@ struct status_data {
 	     matk_min, matk_max,
 	     speed,
 	     amotion, adelay, dmotion;
-	enum e_mode mode;
+	     enum e_mode mode;
 	short
 	hit, flee, cri, flee2,
 	     def2, mdef2,
@@ -1899,22 +1940,23 @@ int status_change_timer_sub(struct block_list *bl, va_list ap);
 int status_change_clear(struct block_list *bl, int type);
 int status_change_clear_buffs(struct block_list *bl, int type);
 
-#define status_calc_bl(bl, flag) status_calc_bl_(bl, (enum scb_flag)(flag), false)
-#define status_calc_mob(md, first) status_calc_bl_(&(md)->bl, SCB_ALL, first)
-#define status_calc_pet(pd, first) status_calc_bl_(&(pd)->bl, SCB_ALL, first)
-#define status_calc_pc(sd, first) status_calc_bl_(&(sd)->bl, SCB_ALL, first)
-#define status_calc_homunculus(hd, first) status_calc_bl_(&(hd)->bl, SCB_ALL, first)
-#define status_calc_mercenary(md, first) status_calc_bl_(&(md)->bl, SCB_ALL, first)
-#define status_calc_elemental(ed, first) status_calc_bl_(&(ed)->bl, SCB_ALL, first)
-#define status_calc_npc(nd, first) status_calc_bl_(&(nd)->bl, SCB_ALL, first)
+#define status_calc_bl(bl, flag) status_calc_bl_(bl, (enum scb_flag)(flag), SCO_NONE)
+#define status_calc_mob(md, opt) status_calc_bl_(&(md)->bl, SCB_ALL, opt)
+#define status_calc_pet(pd, opt) status_calc_bl_(&(pd)->bl, SCB_ALL, opt)
+#define status_calc_pc(sd, opt) status_calc_bl_(&(sd)->bl, SCB_ALL, opt)
+#define status_calc_homunculus(hd, opt) status_calc_bl_(&(hd)->bl, SCB_ALL, opt)
+#define status_calc_mercenary(md, opt) status_calc_bl_(&(md)->bl, SCB_ALL, opt)
+#define status_calc_elemental(ed, opt) status_calc_bl_(&(ed)->bl, SCB_ALL, opt)
+#define status_calc_npc(nd, opt) status_calc_bl_(&(nd)->bl, SCB_ALL, opt)
 
-void status_calc_bl_(struct block_list *bl, enum scb_flag flag, bool first);
-int status_calc_mob_(struct mob_data *md, bool first);
-int status_calc_pet_(struct pet_data *pd, bool first);
-int status_calc_pc_(struct map_session_data *sd, bool first);
-int status_calc_homunculus_(struct homun_data *hd, bool first);
-int status_calc_mercenary_(struct mercenary_data *md, bool first);
-int status_calc_elemental_(struct elemental_data *ed, bool first);
+void status_calc_bl_(struct block_list *bl, enum scb_flag flag, enum e_status_calc_opt opt);
+int status_calc_mob_(struct mob_data *md, enum e_status_calc_opt opt);
+int status_calc_pet_(struct pet_data *pd, enum e_status_calc_opt opt);
+int status_calc_pc_(struct map_session_data *sd, enum e_status_calc_opt opt);
+int status_calc_homunculus_(struct homun_data *hd, enum e_status_calc_opt opt);
+int status_calc_mercenary_(struct mercenary_data *md, enum e_status_calc_opt opt);
+int status_calc_elemental_(struct elemental_data *ed, enum e_status_calc_opt opt);
+int status_calc_npc_(struct npc_data *nd, enum e_status_calc_opt opt);
 
 void status_calc_misc(struct block_list *bl, struct status_data *status, int level);
 void status_calc_regen(struct block_list *bl, struct status_data *status, struct regen_data *regen);
@@ -1938,6 +1980,8 @@ int status_get_total_mdef(struct block_list *src);
 int status_get_total_def(struct block_list *src);
 
 int status_get_matk(struct block_list *src, int flag);
+
+void read_buffspecial_db(void);
 
 int status_readdb(void);
 int do_init_status(void);

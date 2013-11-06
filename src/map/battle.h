@@ -454,7 +454,22 @@ extern struct Battle_Config {
 	int bg_flee_penalty;
 
 	// [brAthena]
-	int devotion_rdamage, warp_no_ress, mob_drop_identified, bRO_Renewal, alliance_in_woe, use_item_in_status, supports_castle_gvg, max_atk,hanbok_ignorepalette, edp_rate, walk_speed_default, official_rates;
+	int devotion_rdamage;
+	int warp_no_ress;
+	int mob_drop_identified;
+	int bRO_Renewal;
+	int alliance_in_woe;
+	int use_item_in_status;
+	int supports_castle_gvg;
+	int max_atk;
+	int hanbok_ignorepalette;
+	int edp_rate;
+	int walk_speed_default;
+	int official_rates;
+	int ip_exp_bonus;
+	int ip_exp_extra;
+	int ip_exp_penalty;
+	int ip_exp_drop;
 
 	// rAthena
 	int max_third_parameter;
@@ -471,11 +486,14 @@ extern struct Battle_Config {
 
 	int mob_size_influence; // Enable modifications on earned experience, drop rates and monster status depending on monster size. [mkbu95]
 	int skill_trap_type;
+	int skill_trap_type_ot;
 	int item_restricted_consumption_type;
 	int max_walk_path;
 	int item_enabled_npc;
 	int item_onfloor; // Whether to drop an undroppable item on the map or destroy it if inventory is full.
 	int packet_obfuscation;
+	int idletime_criteria;
+
 	int bowling_bash_area;
 	int gm_ignore_warpable_area;
 
@@ -489,6 +507,19 @@ extern struct Battle_Config {
 	int mon_trans_disable_in_gvg;
 } battle_config;
 
+/* criteria for battle_config.idletime_critera */
+enum e_battle_config_idletime {
+	BCIDLE_WALK          = 0x001,
+	BCIDLE_USESKILLTOID  = 0x002,
+	BCIDLE_USESKILLTOPOS = 0x004,
+	BCIDLE_USEITEM       = 0x008,
+	BCIDLE_ATTACK        = 0x010,
+	BCIDLE_CHAT          = 0x020,
+	BCIDLE_SIT           = 0x040,
+	BCIDLE_EMOTION       = 0x080,
+	BCIDLE_DROPITEM      = 0x100,
+	BCIDLE_ATCOMMAND     = 0x200,
+};
 
 /**
  * Vars
@@ -555,18 +586,12 @@ int battle_calc_skillratio(int attack_type, struct block_list *src, struct block
   /* applies size modifiers */
 int64 battle_calc_sizefix(struct map_session_data *sd, int64 damage, int type, int size,  bool ignore);
   /* get weapon damage */
-#if VERSION == 1
 int64 battle_calc_weapon_damage(struct block_list *src, struct block_list *bl, uint16 skill_id, uint16 skill_lv, struct weapon_atk *watk, int nk, bool n_ele, short s_ele, short s_ele_, int size, int type, int flag, int flag2);
-#endif
   /* applies defense reductions */
 int64 battle_calc_defense(int attack_type, struct block_list *src, struct block_list *target, uint16 skill_id, uint16 skill_lv, int64 damage, int flag, int pdef);
 
-	int64 battle_calc_base_damage
-#if VERSION == 1
-	(struct block_list *src, struct block_list *bl, uint16 skill_id, uint16 skill_lv, int nk, bool n_ele, short s_ele, short s_ele_, int type, int flag, int flag2);
-#else
-	(struct status_data *status, struct weapon_atk *wa, struct status_change *sc, unsigned short t_size, struct map_session_data *sd, int flag);
-#endif
+int64 battle_calc_base_damage(struct block_list *src, struct block_list *bl, uint16 skill_id, uint16 skill_lv, int nk, bool n_ele, short s_ele, short s_ele_, int type, int flag, int flag2);
+int64 battle_calc_base_damage2(struct status_data *st, struct weapon_atk *wa, struct status_change *sc, unsigned short t_size, struct map_session_data *sd, int flag);
 
 void battle_consume_ammo(struct map_session_data *sd, int skill, int lv);
 // Settings

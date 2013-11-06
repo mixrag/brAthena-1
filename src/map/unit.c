@@ -1920,7 +1920,7 @@ static int unit_attack_timer_sub(struct block_list *src, int tid, unsigned int t
 	}
 
 	if(ud->state.attack_continue) {
-		if(src->type == BL_PC)
+		if(src->type == BL_PC && battle_config.idletime_criteria & BCIDLE_ATTACK)
 			((TBL_PC*)src)->idletime = last_tick;
 		ud->attacktimer = add_timer(ud->attackabletime,unit_attack_timer,src->id,0);
 	}
@@ -1976,8 +1976,8 @@ int unit_skillcastcancel(struct block_list *bl,int type)
 		ret=delete_timer(ud->skilltimer, skill_castend_pos);
 	else
 		ret=delete_timer(ud->skilltimer, skill_castend_id);
-	if(ret<0)
-		ShowError("delete timer error : skill_id : %d\n",ret);
+	if(ret < 0)
+		ShowError("delete timer error %d : skill %d (%s)\n",ret,skill_id,skill_get_name(skill_id));
 
 	ud->skilltimer = INVALID_TIMER;
 
@@ -2209,6 +2209,10 @@ int unit_remove_map_(struct block_list *bl, clr_type clrtype, const char *file, 
 				if(map[bl->m].instance_id >= 0) {
 					instances[map[bl->m].instance_id].users--;
 					instance->check_idle(map[bl->m].instance_id);
+				}
+				if(sd->state.hpmeter_visible) {
+					map[bl->m].hpmeter_visible--;
+					sd->state.hpmeter_visible = 0;
 				}
 				sd->state.debug_remove_map = 1; // temporary state to track double remove_map's [FlavioJS]
 				sd->debug_file = file;

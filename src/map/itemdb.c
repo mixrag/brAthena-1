@@ -1109,7 +1109,7 @@ void itemdb_read_packages(void) {
 				itemdb->packages[cnt].random_groups[gidx].random_list[r].id = data ? data->nameid : 0;
 				itemdb->packages[cnt].random_groups[gidx].random_list[r].qty = icnt;
 				if((itemdb->packages[cnt].random_groups[gidx].random_list[r].probability = probability) == 10000) {
-					ShowWarning("itemdb_read_packages: item '%s' em '%s' tem taxa de queda de 100%!!!! definir este item como 'Random: 0' ou outros itens não vão cair!!!\n",itname,config_setting_name(itg));
+					ShowWarning("itemdb_read_packages: item '%s' em '%s' tem taxa de queda de 100%%!!!! definir este item como 'Random: 0' ou outros itens não vão cair!!!\n",itname,config_setting_name(itg));
 				}
 				itemdb->packages[cnt].random_groups[gidx].random_list[r].hour = hour;
 				itemdb->packages[cnt].random_groups[gidx].random_list[r].onair = onair == true ? 1 : 0;
@@ -1480,6 +1480,9 @@ static bool itemdb_parse_dbrow(char **str, const char *source, int line, int scr
 	if(nameid <= 0) {
 		ShowWarning("itemdb_parse_dbrow: Invalid id %d in line %d of \"%s\", skipping.\n", nameid, line, source);
 		return false;
+	} else if (nameid >= MAX_ITEMDB) {
+		ShowWarning("itemdb_parse_dbrow: Invalid id %d in line %d of \"%s\", beyond MAX_ITEMDB, skipping.\n", nameid, line, source);
+		return false;
 	}
 
 	//ID,Name,Jname,Type,Price,Sell,Weight,ATK,DEF,Range,Slot,Job,Job Upper,Gender,Loc,wLV,eLV,refineable,View
@@ -1830,7 +1833,7 @@ void itemdb_reload(void)
 			sd->combos.id = NULL;
 			sd->combos.count = 0;
 			if(pc_load_combo(sd) > 0)
-				status_calc_pc(sd,0);
+				status_calc_pc(sd,SCO_FORCE);
 		}
 
 	}

@@ -417,8 +417,6 @@ void clif_arrowequip(struct map_session_data *sd,int val); //self
 void clif_arrow_fail(struct map_session_data *sd,int type); //self
 void clif_arrow_create_list(struct map_session_data *sd);   //self
 void clif_statusupack(struct map_session_data *sd,int type,int ok,int val); // self
-void clif_equipitemack(struct map_session_data *sd,int n,int pos,int ok);   // self
-void clif_unequipitemack(struct map_session_data *sd,int n,int pos,int ok); // self
 void clif_misceffect(struct block_list *bl,int type);   // area
 void clif_changeoption(struct block_list *bl);  // area
 void clif_changeoption2(struct block_list *bl); // area
@@ -819,6 +817,12 @@ void clif_scriptclear(struct map_session_data *sd, int npcid);
 
 int clif_calc_walkdelay(struct block_list *bl,int delay, int type, int damage, int div_);
 
+/// brAthena
+void clif_pcbanglogin(struct map_session_data *sd);
+void clif_pcbangnotify(struct map_session_data *sd);
+void clif_pcbangplayingtime(struct map_session_data *sd, int time);
+void clif_pcbangeffect(struct map_session_data *sd);
+
 /**
  * Color Table
  **/
@@ -907,6 +911,32 @@ enum e_BANKING_WITHDRAW_ACK {
 	BWA_UNKNOWN_ERROR = 0x2,
 };
 
+/* because the client devs were replaced by monkeys. */
+enum e_EQUIP_ITEM_ACK {
+#if PACKETVER >= 20120925
+	EIA_SUCCESS = 0x0,
+	EIA_FAIL_LV = 0x1,
+	EIA_FAIL    = 0x2,
+#else
+	EIA_SUCCESS = 0x1,
+	EIA_FAIL_LV = 0x2,
+	EIA_FAIL    = 0x0,
+#endif
+};
+
+/* and again. because the client devs were replaced by monkeys. */
+enum e_UNEQUIP_ITEM_ACK {
+#if PACKETVER >= 20120925
+	UIA_SUCCESS = 0x0,
+	UIA_FAIL    = 0x1,
+#else
+	UIA_SUCCESS = 0x1,
+	UIA_FAIL    = 0x0,
+#endif
+};
+
+void clif_equipitemack(struct map_session_data *sd,int n,int pos,enum e_EQUIP_ITEM_ACK result);   // self
+void clif_unequipitemack(struct map_session_data *sd,int n,int pos,enum e_UNEQUIP_ITEM_ACK result); // self
 
 /**
  * Structures
@@ -986,6 +1016,9 @@ struct s_packet_db packet_db[MAX_PACKET_DB + 1];
 struct clif_interface {
 	/*  */
 	unsigned int cryptKey[3];
+	/* */
+	bool ally_only;
+	/* */
 	unsigned short (*parse_cmd) ( int fd, struct map_session_data *sd );
 	unsigned short (*decrypt_cmd) ( int cmd, struct map_session_data *sd );
 	void (*cooldown_list) (int fd, struct skill_cd* cd);

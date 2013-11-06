@@ -68,10 +68,8 @@
 #define PACKETVER_RE
 
 // Client support for experimental RagexeRE UI present in 2012-04-10 and 2012-04-18
-#ifdef PACKETVER_RE
-#if (PACKETVER == 20120410) || (PACKETVER == 20120418)
+#if defined(PACKETVER_RE) && ( PACKETVER == 20120410 || PACKETVER == 20120418)
 	#define	PARTY_RECRUIT
-#endif
 #endif
 
 // Comment the following line to disable sc_data saving. [Skotlex]
@@ -121,7 +119,7 @@
 //Should hold the max of GLOBAL/ACCOUNT/ACCOUNT2 (needed for some arrays that hold all three)
 #define MAX_REG_NUM 256
 #define DEFAULT_WALK_SPEED 150
-#define MIN_WALK_SPEED 0
+#define MIN_WALK_SPEED 20 /* below 20 clips animation */
 #define MAX_WALK_SPEED 1000
 #if VERSION == -1
 	#define MAX_STORAGE 100
@@ -239,7 +237,7 @@ struct item {
 	int id;
 	short nameid;
 	short amount;
-	unsigned short equip; // location(s) where item is equipped (using enum equip_pos for bitmasking)
+	unsigned int equip; // Location(s) where item is equipped (using enum equip_pos for bitmasking).
 	char identify;
 	char refine;
 	char attribute;
@@ -440,6 +438,7 @@ struct mmo_charstatus {
 
 	time_t delete_date;
 
+	unsigned char font;
 };
 
 typedef enum mail_status {
@@ -817,6 +816,14 @@ enum {
     SEX_SERVER
 };
 
+/* packet size constant for itemlist */
+#if MAX_INVENTORY > MAX_STORAGE && MAX_INVENTORY > MAX_CART
+#define MAX_ITEMLIST MAX_INVENTORY
+#elif MAX_CART > MAX_INVENTORY && MAX_CART > MAX_STORAGE
+#define MAX_ITEMLIST MAX_CART
+#else
+#define MAX_ITEMLIST MAX_STORAGE
+#endif
 // sanity checks...
 #if MAX_ZENY > INT_MAX
 #error MAX_ZENY is too big

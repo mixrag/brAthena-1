@@ -206,8 +206,12 @@ int map_usercount(void)
 int map_freeblock(struct block_list *bl)
 {
 	nullpo_retr(block_free_lock, bl);
+
 	if(block_free_lock == 0 || block_free_count >= block_free_max) {
-		aFree(bl);
+		if(bl->type == BL_ITEM)
+			ers_free(flooritem_ers, bl);
+		else
+			aFree(bl);
 		bl = NULL;
 		if(block_free_count >= block_free_max)
 			ShowWarning("map_freeblock: too many free block! %d %d\n", block_free_count, block_free_lock);
@@ -232,7 +236,10 @@ int map_freeblock_unlock(void)
 	if((--block_free_lock) == 0) {
 		int i;
 		for(i = 0; i < block_free_count; i++) {
-			aFree(block_free[i]);
+			if(block_free[i]->type == BL_ITEM )
+				ers_free(flooritem_ers, block_free[i]);
+			else
+				aFree(block_free[i]);
 			block_free[i] = NULL;
 		}
 		block_free_count = 0;
@@ -1245,7 +1252,7 @@ void map_clearflooritem(struct block_list *bl)
 {
 	struct flooritem_data *fitem = (struct flooritem_data *)bl;
 
-	if(fitem->cleartimer)
+	if(fitem->cleartimer != INVALID_TIMER)
 		delete_timer(fitem->cleartimer,map_clearflooritem_timer);
 
 	clif_clearflooritem(fitem, 0);
@@ -1390,15 +1397,15 @@ int map_addflooritem(struct item *item_data,int amount,int16 m,int16 x,int16 y,i
 		return 0;
 	r=rnd();
 
-	CREATE(fitem, struct flooritem_data, 1);
-	fitem->bl.type=BL_ITEM;
+	fitem = ers_alloc(flooritem_ers, struct flooritem_data);
+	fitem->bl.type = BL_ITEM;
 	fitem->bl.prev = fitem->bl.next = NULL;
-	fitem->bl.m=m;
-	fitem->bl.x=x;
-	fitem->bl.y=y;
+	fitem->bl.m = m;
+	fitem->bl.x = x;
+	fitem->bl.y = y;
 	fitem->bl.id = map_get_new_object_id();
 	if(fitem->bl.id==0) {
-		aFree(fitem);
+		ers_free(flooritem_ers, fitem);
 		return 0;
 	}
 
@@ -1629,8 +1636,6 @@ int map_quit(struct map_session_data *sd)
 	if(sd->pd) pet_lootitem_drop(sd->pd, sd);
 
 	if(sd->state.storage_flag == 1) sd->state.storage_flag = 0;   // No need to Double Save Storage on Quit.
-
-	if(sd->state.permanent_speed == 1) sd->state.permanent_speed = 0; // Remove lock so speed is set back to normal at login.
 
 	if(sd->ed) {
 		elemental_clean_effect(sd->ed);
@@ -2986,6 +2991,10 @@ void do_final_maps(void) {
 
 		if(map[i].channel)
 			clif_chsys_delete(map[i].channel);
+
+		if(map[i].qi_data)
+			aFree(map[i].qi_data);
+
 	}
 	
 	map_zone_db_clear();
@@ -3054,6 +3063,12 @@ void map_flags_init(void)
 		map[i].misc_damage_rate   = 100;
 		map[i].short_damage_rate  = 100;
 		map[i].long_damage_rate   = 100;
+
+		if(map[i].qi_data)
+			aFree(map[i].qi_data);
+
+		map[i].qi_data = NULL;
+		map[i].qi_count = 0;
 	}
 }
 
@@ -3702,6 +3717,7 @@ char *get_database_name(int database_id)
 		#endif
 		case 59: db_name = "const_db"; break;
 		case 60: db_name = "sc_config"; break;
+		case 61: db_name = "buffspecial_db"; break; // brAthena
 	}
 
 	return db_name;
@@ -4519,7 +4535,17 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
+	} else if (!strcmpi(flag,"nocashshop")) {
+		if(state && map[m].flag.nocashshop)
+			;/* nothing to do */
+		else {
+			if(state)
+				map_zone_mf_cache_add(m,"nocashshop\toff");
+			else if( map[m].flag.nocashshop )
+				map_zone_mf_cache_add(m,"nocashshop");
+		}
 	}
+
 	return false;
 }
 void map_zone_apply(int m, struct map_zone_data *zone, const char* start, const char* buffer, const char* filepath) {
@@ -5084,6 +5110,38 @@ void read_map_zone_db(void) {
 	}
 }
 
+void map_add_questinfo(int m, struct questinfo *qi) {
+	unsigned short i;
+
+	/* duplicate, override */
+	for(i = 0; i < map[m].qi_count; i++) {
+		if( map[m].qi_data[i].nd == qi->nd )
+			break;
+	}
+
+	if(i == map[m].qi_count)
+		RECREATE(map[m].qi_data, struct questinfo, ++map[m].qi_count);
+
+	memcpy(&map[m].qi_data[i], qi, sizeof(struct questinfo));
+}
+
+bool map_remove_questinfo(int m, struct npc_data *nd) {
+	unsigned short i;
+
+	for(i = 0; i < map[m].qi_count; i++) {
+		struct questinfo *qi = &map[m].qi_data[i];
+		if(qi->nd == nd) {
+			memset(&map[m].qi_data[i], 0, sizeof(struct questinfo));
+			if( i != --map[m].qi_count ) {
+				memmove(&map[m].qi_data[i],&map[m].qi_data[i+1],sizeof(struct questinfo)*(map[m].qi_count-i));
+			}
+			return true;
+		}
+	}
+	
+	return false;
+}
+
 /**
  * @see DBApply
  */
@@ -5224,12 +5282,13 @@ void do_final(void)
 	regen_db->destroy(regen_db, NULL);
 
 	map_sql_close();
-		ers_destroy(map_iterator_ers);
+	ers_destroy(map_iterator_ers);
+	ers_destroy(flooritem_ers);
 
-		aFree(map);
+	aFree(map);
 
-		if(!enable_grf)
-			aFree(map_cache_buffer);
+	if(!enable_grf)
+		aFree(map_cache_buffer);
 
 	ShowStatus("Finished.\n");
 }
@@ -5473,6 +5532,10 @@ int do_init(int argc, char *argv[])
 	zone_db = strdb_alloc(DB_OPT_DUP_KEY|DB_OPT_RELEASE_DATA, MAP_ZONE_NAME_LENGTH);
 
 	map_iterator_ers = ers_new(sizeof(struct s_mapiterator),"map.c::map_iterator_ers",ERS_OPT_NONE);
+
+	flooritem_ers = ers_new(sizeof(struct flooritem_data),"map.c::map_flooritem_ers",ERS_OPT_NONE);
+	ers_chunk_size(flooritem_ers, 100);
+
 	map_sql_init();
 	if(log_config.sql_logs)
 		log_sql_init();

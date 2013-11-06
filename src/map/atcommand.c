@@ -839,14 +839,18 @@ ACMD_FUNC(speed)
 		return -1;
 	}
 
-	if (speed < 0) {
+	sd->state.permanent_speed = 0;
+	if (speed < 0)
 		sd->base_status.speed = DEFAULT_WALK_SPEED;
-		sd->state.permanent_speed = 0; // Remove lock when set back to default speed.
-	} else {
+	else
 		sd->base_status.speed = cap_value(speed, MIN_WALK_SPEED, MAX_WALK_SPEED);
-		sd->state.permanent_speed = 1; // Set lock when set to non-default speed.
-	}
+
 	status_calc_bl(&sd->bl, SCB_SPEED);
+
+	if(sd->base_status.speed != DEFAULT_WALK_SPEED) {
+		sd->state.permanent_speed = 1; // Set lock when set to non-default speed.
+		clif_displaymessage(fd, msg_txt(8)); // Speed changed.
+	} else
 	clif_displaymessage(fd, msg_txt(8)); // Speed changed.
 	return 0;
 }
@@ -1350,6 +1354,7 @@ ACMD_FUNC(baselevelup)
 
 		sd->status.status_point += status_point;
 		sd->status.base_level += (unsigned int)level;
+		status_calc_pc(sd, SCO_FORCE);
 		status_percent_heal(&sd->bl, 100, 100);
 		clif_misceffect(&sd->bl, 0);
 		clif_displaymessage(fd, msg_txt(21)); // Base level raised.
@@ -1371,13 +1376,13 @@ ACMD_FUNC(baselevelup)
 			sd->status.status_point -= status_point;
 		sd->status.base_level -= (unsigned int)level;
 		clif_displaymessage(fd, msg_txt(22)); // Base level lowered.
+		status_calc_pc(sd, SCO_FORCE);
 	}
 	sd->status.base_exp = 0;
 	clif_updatestatus(sd, SP_STATUSPOINT);
 	clif_updatestatus(sd, SP_BASELEVEL);
 	clif_updatestatus(sd, SP_BASEEXP);
 	clif_updatestatus(sd, SP_NEXTBASEEXP);
-	status_calc_pc(sd, 0);
 	pc_baselevelchanged(sd);
 	if(sd->status.party_id)
 		party_send_levelup(sd);
@@ -1431,7 +1436,7 @@ ACMD_FUNC(joblevelup)
 	clif_updatestatus(sd, SP_JOBEXP);
 	clif_updatestatus(sd, SP_NEXTJOBEXP);
 	clif_updatestatus(sd, SP_SKILLPOINT);
-	status_calc_pc(sd, 0);
+	status_calc_pc(sd, SCO_FORCE);
 
 	return 0;
 }
@@ -2473,7 +2478,7 @@ ACMD_FUNC(param)
 		*status[i] = new_value;
 		clif_updatestatus(sd, SP_STR + i);
 		clif_updatestatus(sd, SP_USTR + i);
-		status_calc_pc(sd, 0);
+		status_calc_pc(sd, SCO_FORCE);
 		clif_displaymessage(fd, msg_txt(42)); // Stat changed.
 	} else {
 		if(value < 0)
@@ -2532,7 +2537,7 @@ ACMD_FUNC(stat_all)
 	}
 
 	if(count > 0) {  // if at least 1 stat modified
-		status_calc_pc(sd, 0);
+		status_calc_pc(sd, SCO_FORCE);
 		clif_displaymessage(fd, msg_txt(84)); // All stats changed!
 	} else {
 		if(value < 0)
@@ -3616,14 +3621,14 @@ ACMD_FUNC(partyrecall)
  *------------------------------------------*/
 ACMD_FUNC(reload)
 {
-	const char *opt[] = { "item_db", "mob_db", "skill_db", "status_db", "pc_db", "groups", "quest_db", "homunculus_db", "pet_db", "motd", "cashshop" };
+	const char *opt[] = { "item_db", "mob_db", "skill_db", "status_db", "pc_db", "groups", "quest_db", "homunculus_db", "pet_db", "motd", "cashshop", "buffspecial" };
 	int option;
 
 	memset(atcmd_output, '\0', sizeof(atcmd_output));
 	nullpo_retr(-1, sd);
 
 	if(!message || !*message) {
-		clif_displaymessage(fd, "Opções: item_db, mob_db, skill_db, status_db, pc_db, groups, quest_db, homunculus_db, pet_db, motd & cashshop");
+		clif_displaymessage(fd, "Opções: item_db, mob_db, skill_db, status_db, pc_db, groups, quest_db, homunculus_db, pet_db, motd, cashshop & buffspecial");
 		clif_displaymessage(fd, "Modo de uso: @reload <opção>");
 		return -1;
 	}
@@ -3662,6 +3667,7 @@ ACMD_FUNC(reload)
 			mapit_free(sd_cash);
 			break;
 		}
+		case 11: read_buffspecial_db(); break;
 		default: message = "Digite um opção válida."; option = -2; break;
 	}
 
@@ -5815,17 +5821,18 @@ ACMD_FUNC(autolootitem)
 		} else if(message[0] == '-') {
 			message++;
 			action = 2;
-		} else if(!strcmp(message,"reset"))
+		} 
+		else if(!strcmp(message,"reset"))
 			action = 4;
-	}
 
-	if(action < 3) { // add or remove
-		if((item_data = itemdb_exists(atoi(message))) == NULL)
-			item_data = itemdb_searchname(message);
-		if(!item_data) {
-			// No items founds in the DB with Id or Name
-			clif_displaymessage(fd, msg_txt(1189)); // Item not found.
-			return -1;
+		if(action < 3) { // add or remove
+			if((item_data = itemdb_exists(atoi(message))) == NULL)
+				item_data = itemdb_searchname(message);
+			if(!item_data) {
+				// No items founds in the DB with Id or Name
+				clif_displaymessage(fd, msg_txt(1189)); // Item not found.
+				return -1;
+			}
 		}
 	}
 
@@ -5890,6 +5897,107 @@ ACMD_FUNC(autolootitem)
 	}
 	return 0;
 }
+
+/*==========================================
+  * @autoloottype
+ * Flags:
+ * 1:   IT_HEALING,  2:   IT_UNKNOWN,  4:    IT_USABLE, 8:    IT_ETC,
+ * 16:  IT_WEAPON,   32:  IT_ARMOR,    64:   IT_CARD,   128:  IT_PETEGG,
+ * 256: IT_PETARMOR, 512: IT_UNKNOWN2, 1024: IT_AMMO,   2048: IT_DELAYCONSUME
+ * 262144: IT_CASH
+ *------------------------------------------*/
+ACMD_FUNC(autoloottype) {
+	int i;
+	uint8 action = 3; // 1=add, 2=remove, 3=help+list (default), 4=reset
+	enum item_types type = -1;
+	int ITEM_NONE = 0;
+
+	if (message && *message) {
+		if (message[0] == '+') {
+			message++;
+			action = 1;
+		} else if (message[0] == '-') {
+			message++;
+			action = 2;
+		} else if (strcmp(message,"reset") == 0) {
+			action = 4;
+		}
+
+		if (action < 3) {
+			// add or remove
+			if (strncmp(message, "healing", 3) == 0)
+				type = IT_HEALING;
+			else if (strncmp(message, "usable", 3) == 0)
+				type = IT_USABLE;
+			else if (strncmp(message, "etc", 3) == 0)
+				type = IT_ETC;
+			else if (strncmp(message, "weapon", 3) == 0)
+				type = IT_WEAPON;
+			else if (strncmp(message, "armor", 3) == 0)
+				type = IT_ARMOR;
+			else if (strncmp(message, "card", 3) == 0)
+				type = IT_CARD;
+			else if (strncmp(message, "petegg", 4) == 0)
+				type = IT_PETEGG;
+			else if (strncmp(message, "petarmor", 4) == 0)
+				type = IT_PETARMOR;
+			else if (strncmp(message, "ammo", 3) == 0)
+				type = IT_AMMO;
+			else {
+				clif_displaymessage(fd, msg_txt(1493)); // Item type not found.
+				return -1;
+			}
+		}
+	}
+
+	switch (action) {
+		case 1:
+			if (sd->state.autoloottype&(1<<type)) {
+				clif_displaymessage(fd, msg_txt(1492)); // You're already autolooting this item type.
+				return -1;
+			}
+			sd->state.autoloottype |= (1<<type); // Stores the type
+			sprintf(atcmd_output, msg_txt(1494), itemdb_typename(type)); // Autolooting item type: '%s'
+			clif_displaymessage(fd, atcmd_output);
+			break;
+		case 2:
+			if(!(sd->state.autoloottype&(1<<type))) {
+				clif_displaymessage(fd, msg_txt(1495)); // You're currently not autolooting this item type.
+				return -1;
+			}
+			sd->state.autoloottype &= ~(1<<type);
+			sprintf(atcmd_output, msg_txt(1496), itemdb_typename(type)); // Removed item type: '%s' from your autoloottype list.
+			clif_displaymessage(fd, atcmd_output);
+			break;
+		case 3:
+			clif_displaymessage(fd, msg_txt(38)); // Invalid location number, or name.
+
+			{
+				// attempt to find the text help string
+				const char *text = atcommand_help_string(command);
+				if (text) clif_displaymessage(fd, text); // send the text to the client
+			}
+
+			if (sd->state.autoloottype == ITEM_NONE) {
+				clif_displaymessage(fd, msg_txt(1497)); // Your autoloottype list is empty.
+			} else {
+				clif_displaymessage(fd, msg_txt(1498)); // Item types on your autoloottype list:
+				for(i=0; i < IT_MAX; i++) {
+					if (sd->state.autoloottype&(1<<i)) {
+						sprintf(atcmd_output, " '%s'", itemdb_typename(i));
+						clif_displaymessage(fd, atcmd_output);
+					}
+				}
+			}
+			break;
+		case 4:
+			sd->state.autoloottype = ITEM_NONE;
+			clif_displaymessage(fd, msg_txt(1499)); // Your autoloottype list has been reset.
+			break;
+	}
+	return 0;
+}
+
 /**
  * No longer available, keeping here just in case it's back someday. [Ind]
  **/
@@ -6922,7 +7030,7 @@ ACMD_FUNC(homlevel)
 		hd->homunculus.exp += hd->exp_next;
 	}while(hd->homunculus.level < nooverflow && merc_hom_levelup(hd));
 
-	status_calc_homunculus(hd,0);
+	status_calc_homunculus(hd,SCO_NONE);
 	status_percent_heal(&hd->bl, 100, 100);
 	clif_specialeffect(&hd->bl,568,AREA);
 	return 0;
@@ -6998,7 +7106,7 @@ ACMD_FUNC(makehomun)
 	homunid = atoi(message);
 
 	if(homunid == -1 && sd->status.hom_id && !merc_is_hom_active(sd->hd)) {
-		if(!sd->hd->homunculus.vaporize )
+		if(sd->hd->homunculus.vaporize )
 			merc_resurrect_homunculus(sd, 100, sd->bl.x, sd->bl.y);
 		else
 			merc_call_homunculus(sd);
@@ -7657,14 +7765,16 @@ ACMD_FUNC(fakename)
  *------------------------------------------*/
 ACMD_FUNC(mapflag)
 {
-#define checkflag( cmd ) if ( map[ sd->bl.m ].flag.cmd ) clif_displaymessage(sd->fd,#cmd)
-#define setflag( cmd ) \
-	if ( strcmp( flag_name , #cmd ) == 0 ){\
-		map[ sd->bl.m ].flag.cmd = flag;\
+#define checkflag( cmd ) do { if ( map[ sd->bl.m ].flag.cmd ) clif_displaymessage(sd->fd,#cmd); } while(0)
+#define setflag( cmd ) do { \
+	if ( strcmp( flag_name , #cmd ) == 0 ) { \
+		map[ sd->bl.m ].flag.cmd = flag; \
 		sprintf(atcmd_output,"[ @mapflag ] %s flag has been set to %s value = %hd",#cmd,flag?"On":"Off",flag);\
 		clif_displaymessage(sd->fd,atcmd_output);\
 		return 0;\
-	}
+	} \
+} while(0)
+
 	char flag_name[100];
 	short flag=0,i;
 	nullpo_retr(-1, sd);
@@ -7685,7 +7795,7 @@ ACMD_FUNC(mapflag)
 		checkflag(nojobexp);            checkflag(nomobloot);           checkflag(nomvploot);   checkflag(nightenabled);
 		checkflag(nodrop);              checkflag(novending);   	checkflag(loadevent);
 		checkflag(nochat);              checkflag(partylock);           checkflag(guildlock);   checkflag(src4instance);
-		checkflag(notomb);
+		checkflag(notomb);              checkflag(nocashshop);
 		clif_displaymessage(sd->fd," ");
 		clif_displaymessage(sd->fd,msg_txt(1312)); // Usage: "@mapflag monster_noteleport 1" (0=Off | 1=On)
 		clif_displaymessage(sd->fd,msg_txt(1313)); // Type "@mapflag available" to list the available mapflags.
@@ -7722,7 +7832,7 @@ ACMD_FUNC(mapflag)
 	setflag(nojobexp);          setflag(nomobloot);         setflag(nomvploot);         setflag(nightenabled);
 	setflag(nodrop);            setflag(novending);         setflag(loadevent);
 	setflag(nochat);            setflag(partylock);         setflag(guildlock);         setflag(src4instance);
-	setflag(notomb);
+	setflag(notomb);            setflag(nocashshop);
 
 	clif_displaymessage(sd->fd,msg_txt(1314)); // Invalid flag name or flag.
 	clif_displaymessage(sd->fd,msg_txt(1312)); // Usage: "@mapflag monster_noteleport 1" (0=Off | 1=On)
@@ -7734,7 +7844,7 @@ ACMD_FUNC(mapflag)
 	clif_displaymessage(sd->fd,"nozenypenalty, notrade, noskill, nowarp, nowarpto, noicewall, snow, clouds, clouds2,");
 	clif_displaymessage(sd->fd,"fog, fireworks, sakura, leaves, nobaseexp, nojobexp, nomobloot,");
 	clif_displaymessage(sd->fd,"nomvploot, nightenabled, nodrop, novending, loadevent, nochat, partylock,");
-	clif_displaymessage(sd->fd,"guildlock, src4instance, notomb");
+	clif_displaymessage(sd->fd,"guildlock, src4instance, notomb, nocashshop");
 
 #undef checkflag
 #undef setflag
@@ -7974,23 +8084,21 @@ ACMD_FUNC(cash)
 			else clif_displaymessage(fd, msg_txt(149)); // Unable to decrease the number/value.
 		} else {
 			if((ret=pc_paycash(sd, -value, 0)) >= 0) {
-				// If this option is set, the message is already sent by pc function
-				if(!battle_config.cashshop_show_points) {
 					sprintf(output, msg_txt(410), ret, sd->cashPoints);
 					clif_disp_onlyself(sd, output, strlen(output));
-				}
-			}
-			else clif_displaymessage(fd, msg_txt(41)); // Unable to decrease the number/value.
+			} else
+				clif_displaymessage(fd, msg_txt(41)); // Unable to decrease the number/value.
 		}
-	}
-	else
-	{ // @points
+	} else { // @points
 		if(value > 0) {
 			if((ret=pc_getcash(sd, 0, value)) >= 0) {
-			    sprintf(output, msg_txt(506), ret, sd->kafraPoints);
-			    clif_disp_onlyself(sd, output, strlen(output));
-			}
-			else clif_displaymessage(fd, msg_txt(149)); // Unable to decrease the number/value.
+				// If this option is set, the message is already sent by pc function
+				if(!battle_config.cashshop_show_points) {
+			    		sprintf(output, msg_txt(506), ret, sd->kafraPoints);
+			    		clif_disp_onlyself(sd, output, strlen(output));
+				}
+			} else
+				clif_displaymessage(fd, msg_txt(149)); // Unable to decrease the number/value.
 		} else {
 			if((ret=pc_paycash(sd, -value, -value)) >= 0) {
 				sprintf(output, msg_txt(411), ret, sd->kafraPoints);
@@ -8460,8 +8568,8 @@ ACMD_FUNC(font)
 
 	font_id = atoi(message);
 	if(font_id == 0) {
-		if(sd->user_font) {
-			sd->user_font = 0;
+		if(sd->status.font) {
+			sd->status.font = 0;
 			clif_displaymessage(fd, msg_txt(1356)); // Returning to normal font.
 			clif_font(sd);
 		} else {
@@ -8470,8 +8578,8 @@ ACMD_FUNC(font)
 		}
 	} else if(font_id < 0 || font_id > 9)
 		clif_displaymessage(fd, msg_txt(1359)); // Invalid font. Use a value from 0 to 9.
-	else if(font_id != sd->user_font) {
-		sd->user_font = font_id;
+	else if(font_id != sd->status.font) {
+		sd->status.font = font_id;
 		clif_font(sd);
 		clif_displaymessage(fd, msg_txt(1360)); // Font changed.
 	} else
@@ -9696,6 +9804,7 @@ void atcommand_basecommands(void)
 		ACMD_DEF(changelook),
 		ACMD_DEF(autoloot),
 		ACMD_DEF2("alootid", autolootitem),
+		ACMD_DEF(autoloottype),
 		ACMD_DEF(mobinfo),
 		ACMD_DEF(exp),
 		ACMD_DEF(version),
@@ -9976,6 +10085,9 @@ bool is_atcommand(const int fd, struct map_session_data *sd, const char *message
 		//pass through the rest of the code compatible with both symbols
 		sprintf(atcmd_msg, "%s", message);
 	}
+
+	if(battle_config.idletime_criteria & BCIDLE_ATCOMMAND)
+		sd->idletime = last_tick;
 
 	//Clearing these to be used once more.
 	memset(command, '\0', sizeof(command));

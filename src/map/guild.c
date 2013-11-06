@@ -1417,7 +1417,7 @@ void guild_block_skill(struct map_session_data *sd, int time)
 	uint16 skill_id[] = { GD_BATTLEORDER, GD_REGENERATION, GD_RESTORE, GD_EMERGENCYCALL };
 	int i;
 	for(i = 0; i < 4; i++)
-		skill_blockpc_start_(sd, skill_id[i], time , true);
+		skill_blockpc_start(sd, skill_id[i], time);
 }
 
 /*====================================================
@@ -1976,7 +1976,7 @@ int guild_castledatasave(int castle_id, int index, int value)
 				gc->defense = value;
 				for(i = 0; i < MAX_GUARDIANS; i++)
 					if(gc->guardian[i].visible && (gd = map_id2md(gc->guardian[i].id)) != NULL)
-						status_calc_mob(gd, 0);
+						status_calc_mob(gd, SCO_NONE);
 				break;
 			}
 		case 4:
