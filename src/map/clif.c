@@ -1315,6 +1315,8 @@ static void clif_weather_check(struct map_session_data *sd)
 	int16 m = sd->bl.m;
 	int fd = sd->fd;
 
+		if (map[m].flag.rain)
+			clif_specialeffect_single(&sd->bl, 161, fd);
 		if(map[m].flag.snow)
 			clif_specialeffect_single(&sd->bl, 162, fd);
 		if(map[m].flag.clouds)
@@ -1332,11 +1334,6 @@ static void clif_weather_check(struct map_session_data *sd)
 			clif_specialeffect_single(&sd->bl, 163, fd);
 		if(map[m].flag.leaves)
 			clif_specialeffect_single(&sd->bl, 333, fd);
-		/**
-		 * No longer available, keeping here just in case it's back someday. [Ind]
-		 **/
-		//if (map[m].flag.rain)
-		//  clif_specialeffect_single(&sd->bl, 161, fd);
 	}
 /**
  * Run when the weather on a map changes, throws all players in map id 'm' to clif_weather_check function
@@ -1433,7 +1430,7 @@ void clif_hominfo(struct map_session_data *sd, struct homun_data *hd, int flag)
 	nullpo_retv(hd);
 
 	status  = &hd->battle_status;
-	htype = hom_class2type(hd->homunculus.class_);
+	htype = homun->class2type(hd->homunculus.class_);
 
 	memset(buf,0,packet_len(0x22e));
 	WBUFW(buf,0)=0x22e;
@@ -1504,7 +1501,7 @@ void clif_send_homdata(struct map_session_data *sd, int state, int param)
 	int fd = sd->fd;
 
 	if((state == SP_INTIMATE) && (param >= 910) && (sd->hd->homunculus.class_ == sd->hd->homunculusDB->evo_class))
-		merc_hom_calc_skilltree(sd->hd, 0);
+		homun->calc_skilltree(sd->hd, 0);
 
 	WFIFOHEAD(fd, packet_len(0x230));
 	WFIFOW(fd,0)=0x230;
@@ -1540,7 +1537,7 @@ int clif_homskillinfoblock(struct map_session_data *sd)
 			WFIFOW(fd,len+8) = skill_get_sp(id,hd->homunculus.hskill[j].lv);
 			WFIFOW(fd,len+10)= skill_get_range2(&sd->hd->bl, id,hd->homunculus.hskill[j].lv);
 			safestrncpy((char *)WFIFOP(fd,len+12), skill_get_name(id), NAME_LENGTH);
-			WFIFOB(fd,len+36) = (hd->homunculus.hskill[j].lv < merc_skill_tree_get_max(id, hd->homunculus.class_))?1:0;
+			WFIFOB(fd,len+36) = (hd->homunculus.hskill[j].lv < homun->skill_tree_get_max(id, hd->homunculus.class_))?1:0;
 			len+=37;
 		}
 	}
@@ -1843,6 +1840,9 @@ void clif_selllist(struct map_session_data *sd)
 
 			if(sd->status.inventory[i].expire_time)
 				continue; // Cannot Sell Rental Items
+
+			if(sd->status.inventory[i].bound && !pc_can_give_bound_items(sd))
+				continue; // Don't allow sale of bound items
 
 			val=sd->inventory_data[i]->value_sell;
 			if(val < 0)
@@ -2257,7 +2257,10 @@ void clif_additem(struct map_session_data *sd, int n, int amount, int fail)
 		p.HireExpireDate = sd->status.inventory[n].expire_time;
 #endif
 #if PACKETVER >= 20071002
-		p.bindOnEquipType = 0; // unused
+		/* why restrict the flag to non-stackable? because this is the only packet allows stackable to,
+		 * show the color, and therefore it'd be inconsistent with the rest (aka it'd show yellow, you relog/refresh and boom its gone)
+		 */
+		p.bindOnEquipType = sd->status.inventory[n].bound && !itemdb_isstackable2(sd->inventory_data[n]) ? 2 : 0;
 #endif
 	}
 	p.result = (unsigned char)fail;
@@ -2370,7 +2373,7 @@ void clif_item_equip(short idx, struct EQUIPITEM_INFO *p, struct item *i, struct
 #endif
 	
 #if PACKETVER >= 20080102
-	p->bindOnEquipType = 0;
+	p->bindOnEquipType = i->bound ? 2 : 0;
 #endif
 
 #if PACKETVER >= 20100629
@@ -8640,7 +8643,7 @@ void clif_refresh(struct map_session_data *sd)
 	}
 	if(sd->vd.cloth_color)
 		clif_refreshlook(&sd->bl,sd->bl.id,LOOK_CLOTHES_COLOR,sd->vd.cloth_color,SELF);
-	if(merc_is_hom_active(sd->hd))
+	if(homun_alive(sd->hd))
 		clif_send_homdata(sd,SP_ACK,0);
 	if(sd->md) {
 		clif_mercenary_info(sd);
@@ -9338,7 +9341,9 @@ void clif_parse_WantToConnection(int fd, struct map_session_data* sd)
 /// 007d
 void clif_parse_LoadEndAck(int fd,struct map_session_data *sd)
 {
+#if PACKETVER >= 20090218
 	int i;
+#endif
 
 	if(sd->bl.prev != NULL)
 		return;
@@ -9396,6 +9401,17 @@ void clif_parse_LoadEndAck(int fd,struct map_session_data *sd)
 
 	if(map[sd->bl.m].users++ == 0 && battle_config.dynamic_mobs)
 		map_spawnmobs(sd->bl.m);
+
+	if(map[sd->bl.m].instance_id >= 0 ) {
+		instances[map[sd->bl.m].instance_id].users++;
+		instance->check_idle(map[sd->bl.m].instance_id);
+	}
+	
+	if(pc_has_permission(sd,PC_PERM_VIEW_HPMETER) ) {
+		map[sd->bl.m].hpmeter_visible++;
+		sd->state.hpmeter_visible = 1;
+	}
+
 	if(!(sd->sc.option&OPTION_INVISIBLE)) {
 		// increment the number of pvp players on the map
 		map[sd->bl.m].users_pvp++;
@@ -9459,7 +9475,7 @@ void clif_parse_LoadEndAck(int fd,struct map_session_data *sd)
 	}
 
 	//homunculus [blackhole89]
-	if(merc_is_hom_active(sd->hd)) {
+	if(homun_alive(sd->hd)) {
 		if(!battle_config.supports_castle_gvg && map_flag_gvg2(sd->bl.m)) {
 			clif_hominfo(sd, sd->hd, 0);
 		} else {
@@ -9536,8 +9552,8 @@ void clif_parse_LoadEndAck(int fd,struct map_session_data *sd)
 		if(sd->pd && sd->pd->pet.intimate > 900)
 			clif_pet_emotion(sd->pd,(sd->pd->pet.class_ - 100)*100 + 50 + pet_hungry_val(sd->pd));
 
-		if(merc_is_hom_active(sd->hd))
-			merc_hom_init_timers(sd->hd);
+		if(homun_alive(sd->hd))
+			homun->init_timers(sd->hd);
 
 		if(night_flag && map[sd->bl.m].flag.nightenabled) {
 			sd->state.night = 1;
@@ -9624,16 +9640,6 @@ void clif_parse_LoadEndAck(int fd,struct map_session_data *sd)
 
 			if(warp_sd || map[sd->bl.m].set_castle == 0)
 				pc_setpos(sd, sd->status.save_point.map, sd->status.save_point.x, sd->status.save_point.y, CLR_OUTSIGHT);
-		}
-
-		if( map[sd->bl.m].instance_id >= 0 ) {
-			instances[map[sd->bl.m].instance_id].users++;
-			instance->check_idle(map[sd->bl.m].instance_id);
-		}
-
-		if( pc_has_permission(sd,PC_PERM_VIEW_HPMETER) ) {
-			map[sd->bl.m].hpmeter_visible++;
-			sd->state.hpmeter_visible = 1;
 		}
 
 		map_iwall_get(sd); // Updates Walls Info on this Map to Client
@@ -11153,7 +11159,7 @@ static void clif_parse_UseSkillToId_homun(struct homun_data *hd, struct map_sess
 	} else if(DIFF_TICK(tick, hd->ud.canact_tick) < 0)
 		return;
 
-	lv = merc_hom_checkskill(hd, skill_id);
+	lv = homun->checkskill(hd, skill_id);
 	if(skill_lv > lv)
 		skill_lv = lv;
 	if(skill_lv)
@@ -11174,7 +11180,7 @@ static void clif_parse_UseSkillToPos_homun(struct homun_data *hd, struct map_ses
 
 	if(hd->sc.data[SC_BASILICA])
 		return;
-	lv = merc_hom_checkskill(hd, skill_id);
+	lv = homun->checkskill(hd, skill_id);
 	if(skill_lv > lv)
 		skill_lv = lv;
 	if(skill_lv)
@@ -14350,7 +14356,7 @@ void clif_feel_req(int fd, struct map_session_data *sd, uint16 skill_lv)
 /// Request to change homunculus' name (CZ_RENAME_MER).
 /// 0231 <name>.24B
 void clif_parse_ChangeHomunculusName(int fd, struct map_session_data *sd) {
-	merc_hom_change_name(sd,(char *)RFIFOP(fd,2));
+	 homun->change_name(sd,(char *)RFIFOP(fd,2));
 }
 
 
@@ -14364,7 +14370,7 @@ void clif_parse_HomMoveToMaster(int fd, struct map_session_data *sd)
 
 	if(sd->md && sd->md->bl.id == id)
 		bl = &sd->md->bl;
-	else if(merc_is_hom_active(sd->hd) && sd->hd->bl.id == id)
+	else if(homun_alive(sd->hd) && sd->hd->bl.id == id)
 		bl = &sd->hd->bl; // Moving Homunculus
 	else
 		return;
@@ -14387,7 +14393,7 @@ void clif_parse_HomMoveTo(int fd, struct map_session_data *sd)
 
 	if(sd->md && sd->md->bl.id == id)
 		bl = &sd->md->bl; // Moving Mercenary
-	else if(merc_is_hom_active(sd->hd) && sd->hd->bl.id == id)
+	else if(homun_alive(sd->hd) && sd->hd->bl.id == id)
 		bl = &sd->hd->bl; // Moving Homunculus
 	else
 		return;
@@ -14407,7 +14413,7 @@ void clif_parse_HomAttack(int fd,struct map_session_data *sd)
 	    target_id = RFIFOL(fd,6),
 	    action_type = RFIFOB(fd,10);
 
-	if(merc_is_hom_active(sd->hd) && sd->hd->bl.id == id)
+	if(homun_alive(sd->hd) && sd->hd->bl.id == id)
 		bl = &sd->hd->bl;
 	else if(sd->md && sd->md->bl.id == id)
 		bl = &sd->md->bl;
@@ -14433,10 +14439,10 @@ void clif_parse_HomMenu(int fd, struct map_session_data *sd)
 
 	cmd = RFIFOW(fd,0);
 
-	if(!merc_is_hom_active(sd->hd))
+	if(!homun_alive(sd->hd))
 		return;
 
-	merc_menu(sd,RFIFOB(fd,packet_db[cmd].pos[1]));
+	homun->menu(sd,RFIFOB(fd,packet_db[cmd].pos[1]));
 }
 
 
@@ -15101,7 +15107,8 @@ void clif_parse_Auction_setitem(int fd, struct map_session_data *sd)
 
 	if(!pc_can_give_items(sd) || sd->status.inventory[idx].expire_time ||
 	   !sd->status.inventory[idx].identify ||
-	   !itemdb_canauction(&sd->status.inventory[idx],pc_get_group_level(sd))) {  // Quest Item or something else
+	   !itemdb_canauction(&sd->status.inventory[idx],pc_get_group_level(sd))||  // Quest Item or something else
+		(sd->status.inventory[idx].bound && !pc_can_give_bound_items(sd))) {
 		clif_Auction_setitem(sd->fd, idx, true);
 		return;
 	}
@@ -15178,7 +15185,6 @@ void clif_parse_Auction_register(int fd, struct map_session_data *sd)
 		return;
 	}
 
-	// Auction checks...
 	if(sd->status.zeny < (auction.hours * battle_config.auction_feeperhour) || pc_has_permission(sd,PC_PERM_CAN_SHOP)) {
 		clif_Auction_message(fd, 5); // You do not have enough zeny to pay the Auction Fee.
 		return;
@@ -15206,6 +15212,13 @@ void clif_parse_Auction_register(int fd, struct map_session_data *sd)
 		// Just in case
 		clif_Auction_message(fd, 2); // The auction has been canceled
 		return;
+	}
+
+	// Auction checks...
+	if(sd->status.inventory[sd->auction.index].bound && !pc_can_give_bound_items(sd)) {
+		clif_displaymessage(sd->fd, msg_txt(293));
+		clif_Auction_message(fd, 2); // The auction has been canceled
+ 		return;
 	}
 
 	safestrncpy(auction.item_name, item->jname, sizeof(auction.item_name));
@@ -17712,8 +17725,6 @@ void clif_parse_bgqueue_register(int fd, struct map_session_data *sd) {
 		clif->bgqueue_ack(sd,BGQA_FAIL_BGNAME_INVALID,0);
 		return;
 	}
-	//debug
-	safestrncpy(arena->name, p->bg_name, sizeof(arena->name));
 
 	switch((enum bg_queue_types)p->type) {
 		case BGQT_INDIVIDUAL:

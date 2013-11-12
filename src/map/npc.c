@@ -1625,7 +1625,7 @@ static int npc_selllist_sub(struct map_session_data *sd, int n, unsigned short *
 int npc_selllist(struct map_session_data *sd, int n, unsigned short *item_list)
 {
 	double z;
-	int i,skill_t, idx = skill_get_index(MC_OVERCHARGE); 
+	int i,skill_t; 
 	struct npc_data *nd;
 
 	nullpo_retr(1, sd);
@@ -2025,6 +2025,53 @@ static void npc_parsename(struct npc_data *nd, const char *name, const char *sta
 	}
 }
 
+// Parse View
+// Support for using Constants in place of NPC View IDs.
+int npc_parseview(const char* w4, const char* start, const char* buffer, const char* filepath) {
+	int val = -1, i = 0;
+	char viewid[1024];	// Max size of name from const.txt, see script->read_constdb.
+
+	// Extract view ID / constant
+	while (w4[i] != '\0') {
+		if (isspace(w4[i]) || w4[i] == '/' || w4[i] == ',')
+			break;
+
+		i++;
+	}
+
+	safestrncpy(viewid, w4, i+=1);
+
+	// Check if view id is not an ID (only numbers).
+	if(!npc_viewisid(viewid))
+	{
+		// Check if constant exists and get its value.
+		if(!script_get_constant(viewid, &val)) {
+			ShowWarning("npc_parseview: Invalid NPC constant '%s' specified in file '%s', line'%d'. Defaulting to INVISIBLE_CLASS. \n", viewid, filepath, strline(buffer,start-buffer));
+			val = INVISIBLE_CLASS;
+		}
+	} else {
+		// NPC has an ID specified for view id.
+		val = atoi(w4);
+	}
+
+	return val;
+}
+
+// View is ID
+// Checks if given view is an ID or constant.
+bool npc_viewisid(const char * viewid)
+{
+	if(atoi(viewid) != -1)
+	{
+		// Loop through view, looking for non-numeric character.
+		while (*viewid) {
+			if (isdigit(*viewid++) == 0) return false;
+		}
+	}
+
+    return true;
+}
+
 //Add then display an npc warp on map
 struct npc_data *npc_add_warp(char *name, short from_mapid, short from_x, short from_y, short xs, short ys, unsigned short to_mapindex, short to_x, short to_y) {
 	int i, flag = 0;
@@ -2225,7 +2272,7 @@ static const char *npc_parse_shop(char *w1, char *w2, char *w3, char *w4, const 
 	nd->bl.y = y;
 	nd->bl.id = npc_get_new_npc_id();
 	npc_parsename(nd, w3, start, buffer, filepath);
-	nd->class_ = m==-1?-1:atoi(w4);
+	nd->class_ = m == -1 ? -1 : npc_parseview(w4, start, buffer, filepath);
 	nd->speed = 200;
 
 	++npc_shop;
@@ -2334,7 +2381,7 @@ static const char *npc_skip_script(const char *start, const char *buffer, const 
 /// <map name>,<x>,<y>,<facing>%TAB%script%TAB%<NPC Name>%TAB%<sprite id>,<triggerX>,<triggerY>,{<code>}
 static const char *npc_parse_script(char *w1, char *w2, char *w3, char *w4, const char *start, const char *buffer, const char *filepath, bool runOnInit)
 {
-	int x, y, dir = 0, m, xs = 0, ys = 0, class_ = 0;   // [Valaris] thanks to fov
+	int x, y, dir = 0, m, xs = 0, ys = 0;   // [Valaris] thanks to fov
 	char mapname[32];
 	struct script_code *scriptroot;
 	int i;
@@ -2382,13 +2429,12 @@ static const char *npc_parse_script(char *w1, char *w2, char *w3, char *w4, cons
 
 	CREATE(nd, struct npc_data, 1);
 
-	if(sscanf(w4, "%d,%d,%d", &class_, &xs, &ys) == 3) {
+	if(sscanf(w4, "%*[^,],%d,%d", &xs, &ys) == 2 ) {
 		// OnTouch area defined
 		nd->u.scr.xs = xs;
 		nd->u.scr.ys = ys;
 	} else {
 		// no OnTouch area
-		class_ = atoi(w4);
 		nd->u.scr.xs = -1;
 		nd->u.scr.ys = -1;
 	}
@@ -2399,7 +2445,7 @@ static const char *npc_parse_script(char *w1, char *w2, char *w3, char *w4, cons
 	nd->bl.y = y;
 	npc_parsename(nd, w3, start, buffer, filepath);
 	nd->bl.id = npc_get_new_npc_id();
-	nd->class_ = class_;
+	nd->class_ = m == -1 ? -1 : npc_parseview(w4, start, buffer, filepath);
 	nd->speed = 200;
 	nd->u.scr.script = scriptroot;
 	nd->u.scr.label_list = label_list;
@@ -2415,7 +2461,7 @@ static const char *npc_parse_script(char *w1, char *w2, char *w3, char *w4, cons
 		nd->dir = dir;
 		npc_setcells(nd);
 		map_addblock(&nd->bl);
-		if(class_ >= 0) {
+		if(nd->class_ >= 0) {
 			status_set_viewdata(&nd->bl, nd->class_);
 			if(map[nd->bl.m].users)
 				clif_spawn(&nd->bl);
@@ -2490,19 +2536,21 @@ const char *npc_parse_duplicate(char *w1, char *w2, char *w3, char *w4, const ch
 	dnd = npc_name2id(srcname);
 
 	if(dnd == NULL) {
-		ShowError("npc_parse_script: original npc not found for duplicate in file '%s', line '%d' : %s\n", filepath, strline(buffer,start-buffer), srcname);
+		ShowError("npc_parse_script: original npc not found for duplicate in file '%s', line '%d': %s\n", filepath, strline(buffer,start-buffer), srcname);
 		return end;// next line, try to continue
 	}
 	src_id = dnd->bl.id;
 	type = dnd->subtype;
 
 	// get placement
-	if((type==SHOP || type==CASHSHOP || type==SCRIPT) && strcmp(w1, "-") == 0) {
-		// floating shop/chashshop/script
+	if((type==SHOP || type==CASHSHOP || type==SCRIPT) && strcmp(w1, "-") == 0) {// floating shop/chashshop/script
 		x = y = dir = 0;
 		m = -1;
 	} else {
-		if(sscanf(w1, "%31[^,],%d,%d,%d", mapname, &x, &y, &dir) != 4) { // <map name>,<x>,<y>,<facing>
+		int fields = sscanf(w1, "%31[^,],%d,%d,%d", mapname, &x, &y, &dir);
+		if( type == WARP && fields == 3 ) { // <map name>,<x>,<y>
+			dir = 0;
+		} else if(fields != 4) {// <map name>,<x>,<y>,<facing>
 			ShowError("npc_parse_duplicate: Invalid placement format for duplicate in file '%s', line '%d'. Skipping line...\n * w1=%s\n * w2=%s\n * w3=%s\n * w4=%s\n", filepath, strline(buffer,start-buffer), w1, w2, w3, w4);
 			return end;// next line, try to continue
 		}
@@ -2515,9 +2563,8 @@ const char *npc_parse_duplicate(char *w1, char *w2, char *w3, char *w4, const ch
 	}
 
 	if(type == WARP && sscanf(w4, "%d,%d", &xs, &ys) == 2);  // <spanx>,<spany>
-	else if(type == SCRIPT && sscanf(w4, "%d,%d,%d", &class_, &xs, &ys) == 3); // <sprite id>,<triggerX>,<triggerY>
-	else if(type != WARP) class_ = atoi(w4);  // <sprite id>
-	else {
+	else if(type == SCRIPT && sscanf(w4, "%*[^,],%d,%d", &xs, &ys) == 2); // <sprite id>,<triggerX>,<triggerY>
+	else if(type == WARP) {
 		ShowError("npc_parse_duplicate: Invalid span format for duplicate warp in file '%s', line '%d'. Skipping line...\n * w1=%s\n * w2=%s\n * w3=%s\n * w4=%s\n", filepath, strline(buffer,start-buffer), w1, w2, w3, w4);
 		return end;// next line, try to continue
 	}
@@ -2530,7 +2577,7 @@ const char *npc_parse_duplicate(char *w1, char *w2, char *w3, char *w4, const ch
 	nd->bl.y = y;
 	npc_parsename(nd, w3, start, buffer, filepath);
 	nd->bl.id = npc_get_new_npc_id();
-	nd->class_ = class_;
+	nd->class_ = m == -1 ? -1 : npc_parseview(w4, start, buffer, filepath);
 	nd->speed = 200;
 	nd->src_id = src_id;
 	nd->bl.type = BL_NPC;
@@ -2573,7 +2620,7 @@ const char *npc_parse_duplicate(char *w1, char *w2, char *w3, char *w4, const ch
 		nd->dir = dir;
 		npc_setcells(nd);
 		map_addblock(&nd->bl);
-		if(class_ >= 0) {
+		if(nd->class_ >= 0) {
 			status_set_viewdata(&nd->bl, nd->class_);
 			if(map[nd->bl.m].users)
 				clif_spawn(&nd->bl);
@@ -3583,60 +3630,83 @@ void npc_parsesrcfile(const char *filepath, bool runOnInit)
 			}
 		}
 
-			#if VERSION == 1
+#if VERSION == 1
 			if((!strcasecmp(w2,"warp") || !strcasecmp(w2,"warp#re") || !strcasecmp(w2,"warp#dv")) && count > 3) {
-			#elif VERSION == 0
+#elif VERSION == 0
 			if((!strcasecmp(w2,"warp") ||	!strcasecmp(w2,"warp#pre") || !strcasecmp(w2,"warp#dv") || !strcasecmp(w2,"warp#vpo")) && count > 3) {
-			#else
+#else
 			if((!strcasecmp(w2,"warp") ||	!strcasecmp(w2,"warp#ot") || !strcasecmp(w2,"warp#vpo")) && count > 3) {
-			#endif
+#endif
+#ifdef ENABLE_CASE_CHECK
+			if(strcmp(w2, "warp") != 0 && strcmp(w2, "warp#re") != 0 && strcmp(w2, "warp#dv") != 0 && strcmp(w2, "warp#vpo") != 0 && strcmp(w2, "warp#vpo") != 0 && strcmp(w2, "warp#pre") != 0 && strcmp(w2, "warp#ot") != 0) DeprecationWarning("npc_parsesrcfile", w2, "warp", filepath, strline(buffer, p-buffer)); // TODO
+#endif
 			p = npc_parse_warp(w1,w2,w3,w4, p, buffer, filepath);
-			#if VERSION == 1
+#if VERSION == 1
 			} else if((strcasecmp(w2,"shop") == 0 || strcasecmp(w2,"cashshop") == 0 || strcasecmp(w2,"shop#re") == 0 || strcasecmp(w2,"cashshop#re") == 0 || strcasecmp(w2,"shop#dv") == 0 || strcasecmp(w2,"cashshop#dv") == 0) && count > 3) {
-			#elif VERSION == 0
+#elif VERSION == 0
 			} else if((strcasecmp(w2,"shop") == 0 || strcasecmp(w2,"cashshop") == 0 || strcasecmp(w2,"shop#pre") == 0 || strcasecmp(w2,"cashshop#pre") == 0 || strcasecmp(w2,"shop#dv") == 0 || strcasecmp(w2,"cashshop#dv") == 0 || strcasecmp(w2,"shop#vpo") == 0 || strcasecmp(w2,"cashshop#vpo") == 0) && count > 3) {
-			#else
+#else
 			} else if((strcasecmp(w2,"shop") == 0 || strcasecmp(w2,"cashshop") == 0 || strcasecmp(w2,"shop#ot") == 0 || strcasecmp(w2,"cashshop#ot" ) == 0 || strcasecmp(w2,"shop#vpo") == 0 || strcasecmp(w2,"cashshop#vpo") == 0) && count > 3) {
-			#endif
+#endif
+#ifdef ENABLE_CASE_CHECK
+			if(strcasecmp(w2,"shop") == 0 && strcmp(w2, "shop") != 0 && strcmp(w2, "shop#re") != 0 && strcmp(w2, "shop#pre") != 0 && strcmp(w2, "shop#ot") != 0 && strcmp(w2, "shop#dv") != 0 && strcmp(w2, "shop#vpo") != 0) DeprecationWarning("npc_parsesrcfile", w2, "shop", filepath, strline(buffer, p-buffer)) // TODO
+			else if(strcasecmp(w2,"cashshop") == 0 && strcmp(w2, "cashshop") != 0 ) DeprecationWarning("npc_parsesrcfile", w2, "cashshop", filepath, strline(buffer, p-buffer)); // TODO
+#endif
 			p = npc_parse_shop(w1,w2,w3,w4, p, buffer, filepath);
-			#if VERSION == 1
+#if VERSION == 1
 			} else if((strcasecmp(w2,"script") == 0 || strcasecmp(w2,"script#re") == 0 || strcasecmp(w2,"script#dv") == 0) && count > 3) {
-			#elif VERSION == 0
+#elif VERSION == 0
 			} else if((strcasecmp(w2,"script") == 0 || strcasecmp(w2,"script#pre") == 0 || strcasecmp(w2,"script#dv") == 0 || strcasecmp(w2,"script#vpo") == 0) && count > 3) {
-			#else
+#else
 			} else if((strcasecmp(w2,"script") == 0 || strcasecmp(w2,"script#ot") == 0 || strcasecmp(w2,"script#vpo") == 0) && count > 3) {
-			#endif
+#endif
+#ifdef ENABLE_CASE_CHECK
+			if(strcmp(w2, "script") != 0 && strcmp(w2, "script#re") != 0 && strcmp(w2, "script#pre") != 0 && strcmp(w2, "script#ot") != 0 && strcmp(w2, "script#dv") != 0 && strcmp(w2, "script#vpo") != 0) DeprecationWarning("npc_parsesrcfile", w2, "script", filepath, strline(buffer, p-buffer)); // TODO
+			if(strcasecmp(w1, "function") == 0 && strcmp(w1, "function") != 0 ) DeprecationWarning("npc_parsesrcfile", w1, "function", filepath, strline(buffer, p-buffer)); // TODO
+#endif
 			if(strcasecmp(w1,"function") == 0)
 				p = npc_parse_function(w1, w2, w3, w4, p, buffer, filepath);
 			else
 				p = npc_parse_script(w1,w2,w3,w4, p, buffer, filepath,runOnInit);
 		}
-		#if VERSION == 1
+#if VERSION == 1
 		else if(((i=0, sscanf(w2,"duplicate%n",&i), (i > 0 && w2[i] == '(')) || (i=0, sscanf(w2,"duplicatr%n",&i), (i > 0 && w2[i] == '(')) || (i=0, sscanf(w2,"duplicata%n",&i), (i > 0 && w2[i] == '('))) && count > 3) {
-		#elif VERSION == 0
+#elif VERSION == 0
 		else if(((i=0, sscanf(w2,"duplicate%n",&i), (i > 0 && w2[i] == '(')) || (i=0, sscanf(w2,"duplicatp%n",&i), (i > 0 && w2[i] == '(')) || (i=0, sscanf(w2,"duplicata%n",&i), (i > 0 && w2[i] == '(')) || (i=0, sscanf(w2,"duplicatv%n",&i), (i > 0 && w2[i] == '('))) && count > 3) {
-		#else
+#else
 		else if(((i=0, sscanf(w2,"duplicate%n",&i), (i > 0 && w2[i] == '(')) || (i=0, sscanf(w2,"duplicato%n",&i), (i > 0 && w2[i] == '(')) || (i=0, sscanf(w2,"duplicatv%n",&i), (i > 0 && w2[i] == '('))) && count > 3) {
-		#endif
+#endif
+#ifdef ENABLE_CASE_CHECK
+			char temp[10]; safestrncpy(temp, w2, 10);
+			if(strcmp(temp, "duplicate") != 0 && strcmp(temp, "duplicata") != 0 && strcmp(temp, "duplicatr") != 0 && strcmp(temp, "duplicatp") != 0 && strcmp(temp, "duplicato") != 0 && strcmp(temp, "duplicatv") != 0) DeprecationWarning("npc_parsesrcfile", temp, "duplicate", filepath, strline(buffer, p-buffer)); // TODO
+#endif
 			p = npc_parse_duplicate(w1,w2,w3,w4, p, buffer, filepath);
-			#if VERSION == 1
+#if VERSION == 1
 			} else if((strcmpi(w2,"monster") == 0 || strcmpi(w2,"boss_monster") == 0 || !strcmpi(w2,"monster#re") || !strcmpi(w2,"boss_monster#re") || !strcmpi(w2,"monster#dv") || !strcmpi(w2,"boss_monster#dv")) && count > 3) {
-			#elif VERSION == 0
+#elif VERSION == 0
 			} else if((strcmpi(w2,"monster") == 0 || strcmpi(w2,"boss_monster") == 0 || !strcmpi(w2,"monster#pre") || !strcmpi(w2,"boss_monster#pre") || !strcmpi(w2,"monster#dv") || !strcmpi(w2,"boss_monster#dv") || !strcmpi(w2,"monster#vpo") || !strcmpi(w2,"boss_monster#vpo")) && count > 3) {
-			#else
+#else
 			} else if((strcmpi(w2,"monster") == 0 || strcmpi(w2,"boss_monster") == 0 || !strcmpi(w2,"monster#ot") || !strcmpi(w2,"boss_monster#ot") || !strcmpi(w2,"monster#vpo") || !strcmpi(w2,"boss_monster#vpo")) && count > 3) {
-			#endif
+#endif
+#ifdef ENABLE_CASE_CHECK
+			if(strcasecmp(w2,"monster") == 0 && strcmp(w2, "monster") != 0 && strcmp(w2, "monster#re") != 0 && strcmp(w2, "monster#pre") != 0 && strcmp(w2, "monster#ot") != 0 && strcmp(w2, "monster#dv") != 0 && strcmp(w2, "monster#vpo") != 0) DeprecationWarning("npc_parsesrcfile", w2, "monster", filepath, strline(buffer, p-buffer)) // TODO:
+			else if(strcasecmp(w2,"boss_monster") == 0 && strcmp(w2, "boss_monster") != 0) DeprecationWarning("npc_parsesrcfile", w2, "boss_monster", filepath, strline(buffer, p-buffer)); // TODO
+#endif
 			p = npc_parse_mob(w1, w2, w3, w4, p, buffer, filepath);
 			} else if(strcmpi(w2,"mapflag") == 0 && count >= 3) {
+#ifdef ENABLE_CASE_CHECK
+			if(strcmp(w2, "mapflag") != 0) DeprecationWarning("npc_parsesrcfile", w2, "mapflag", filepath, strline(buffer, p-buffer)); // TODO
+#endif
 			p = npc_parse_mapflag(w1, w2, trim(w3), trim(w4), p, buffer, filepath);
-    } else {
-		#if VERSION == 1
+    		} else {
+#if VERSION == 1
 		if(strcmp(w2,"warp#re") || strcmp(w2,"shop#re") || strcmp(w2,"script#re") || strcmp(w2,"duplicatr") || strcmpi(w2,"monster#re") || strcmpi(w2,"boss_monster#re") || strcmp(w2,"warp#dv") || strcmp(w2,"shop#dv") || strcmp(w2,"script#dv") || strcmp(w2,"duplicata") || strcmpi(w2,"monster#dv") || strcmpi(w2,"boss_monster#dv"))
-		#elif VERSION == 0
+#elif VERSION == 0
 		if(strcmp(w2,"warp#pre") || strcmp(w2,"shop#pre") || strcmp(w2,"script#pre") || strcmp(w2,"duplicatp") || strcmpi(w2,"monster#pre") || strcmpi(w2,"boss_monster#pre") || strcmp(w2,"warp#dv") || strcmp(w2,"shop#dv") || strcmp(w2,"script#dv") || strcmp(w2,"duplicata") || strcmpi(w2,"monster#dv") || strcmpi(w2,"boss_monster#dv") || strcmp(w2,"warp#vpo") || strcmp(w2,"shop#vpo") || strcmp(w2,"script#vpo") || strcmp(w2,"duplicatv") || strcmpi(w2,"monster#vpo") || strcmpi(w2,"boss_monster#vpo"))
-		#else
+#else
 		if(strcmp(w2,"warp#ot") || strcmp(w2,"shop#ot") || strcmp(w2,"script#ot") || strcmp(w2,"duplicato") || strcmpi(w2,"monster#ot") || strcmpi(w2,"boss_monster#ot") || strcmp(w2,"warp#vpo") || strcmp(w2,"shop#vpo") || strcmp(w2,"script#vpo") || strcmp(w2,"duplicatv") || strcmpi(w2,"monster#vpo") || strcmpi(w2,"boss_monster#vpo"))
-		#endif
+#endif
+
 				p = npc_skip_script(p,buffer,filepath);
 		else {
 			ShowError("npc_parsesrcfile: Unable to parse, probably a missing or extra TAB in file '%s', line '%d'. Skipping line...\n * w1=%s\n * w2=%s\n * w3=%s\n * w4=%s\n", filepath, strline(buffer,p-buffer), w1, w2, w3, w4);
@@ -3701,6 +3771,9 @@ void npc_read_event_script(void)
 			}
 
 			if((p=strchr(p,':')) && p && strcmpi(name,p)==0) {
+#ifdef ENABLE_CASE_CHECK
+				if(strcmp(name, p) != 0) DeprecationWarning2("npc_read_event_script", p, name, config[i].event_name); // TODO
+#endif
 				script_event[i].event[count] = ed;
 				script_event[i].event_name[count] = key.str;
 				script_event[i].event_count++;

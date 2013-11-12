@@ -56,6 +56,7 @@
 #include "unit.h"
 #include "mapreg.h"
 #include "quest.h"
+#include "searchstore.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -845,13 +846,14 @@ ACMD_FUNC(speed)
 	else
 		sd->base_status.speed = cap_value(speed, MIN_WALK_SPEED, MAX_WALK_SPEED);
 
-	status_calc_bl(&sd->bl, SCB_SPEED);
-
 	if(sd->base_status.speed != DEFAULT_WALK_SPEED) {
 		sd->state.permanent_speed = 1; // Set lock when set to non-default speed.
 		clif_displaymessage(fd, msg_txt(8)); // Speed changed.
 	} else
-	clif_displaymessage(fd, msg_txt(8)); // Speed changed.
+	clif_displaymessage(fd, msg_txt(172)); // Speed returned to normal.
+
+	status_calc_bl(&sd->bl, SCB_SPEED);
+
 	return 0;
 }
 
@@ -1181,11 +1183,12 @@ ACMD_FUNC(heal)
 
 /*==========================================
  * @item command (usage: @item <name/id_of_item> <quantity>) (modified by [Yor] for pet_egg)
+ * @itembound command (usage: @itembound <name/id_of_item> <quantity> <bound type>) (revised by [Mhalicot])
  *------------------------------------------*/
 ACMD_FUNC(item)
 {
 	char item_name[100];
-	int number = 0, item_id, flag = 0;
+	int number = 0, item_id, flag = 0, bound = 0;
 	struct item item_tmp;
 	struct item_data *item_data;
 	int get_count, i;
@@ -1193,10 +1196,16 @@ ACMD_FUNC(item)
 
 	memset(item_name, '\0', sizeof(item_name));
 
-	if(!message || !*message || (
+	if(!strcmpi(command+1,"itembound") && (!message || !*message || (
+		sscanf(message, "\"%99[^\"]\" %d %d", item_name, &number, &bound) < 2 && 
+		sscanf(message, "%99s %d %d", item_name, &number, &bound) < 2 
+	))) {
+		clif_displaymessage(fd, msg_txt(295)); // Please enter an item name or ID (usage: @itembound <item name/ID> <quantity> <bound_type>).
+		return -1;
+	} else if(!message || !*message || (
 	       sscanf(message, "\"%99[^\"]\" %d", item_name, &number) < 1 &&
-	       sscanf(message, "%99s %d", item_name, &number) < 1
-	   )) {
+	       sscanf(message, "%99s %d", item_name, &number) < 1 )) 
+		{
 		clif_displaymessage(fd, msg_txt(983)); // Please enter an item name or ID (usage: @item <item name/ID> <quantity>).
 		return -1;
 	}
@@ -1210,11 +1219,21 @@ ACMD_FUNC(item)
 		return -1;
 	}
 
+		if(!strcmpi(command+1,"itembound") && !(bound >= IBT_MIN && bound <= IBT_MAX)) {
+		clif_displaymessage(fd, msg_txt(298)); // Invalid bound type
+		return -1;
+	}
+
 	item_id = item_data->nameid;
 	get_count = number;
 	//Check if it's stackable.
-	if(!itemdb_isstackable2(item_data))
+	if(!itemdb_isstackable2(item_data)) {
+		if(bound && (item_data->type == IT_PETEGG || item_data->type == IT_PETARMOR)) {
+			clif_displaymessage(fd, msg_txt(498)); // Cannot create bounded pet eggs or pet armors.
+			return -1;
+		}
 		get_count = 1;
+	}
 
 	for(i = 0; i < number; i += get_count) {
 		// if not pet egg
@@ -1222,6 +1241,7 @@ ACMD_FUNC(item)
 			memset(&item_tmp, 0, sizeof(item_tmp));
 			item_tmp.nameid = item_id;
 			item_tmp.identify = 1;
+			item_tmp.bound = (unsigned char)bound;
 
 			if((flag = pc_additem(sd, &item_tmp, get_count, LOG_TYPE_COMMAND)))
 				clif_additem(sd, 0, 0, flag);
@@ -1234,24 +1254,30 @@ ACMD_FUNC(item)
 }
 
 /*==========================================
- *
+ * @item2 and @itembound2 command (revised by [Mhalicot])
  *------------------------------------------*/
 ACMD_FUNC(item2)
 {
 	struct item item_tmp;
 	struct item_data *item_data;
 	char item_name[100];
-	int item_id, number = 0;
+	int item_id, number = 0, bound = 0;
 	int identify = 0, refine = 0, attr = 0;
 	int c1 = 0, c2 = 0, c3 = 0, c4 = 0;
 	nullpo_retr(-1, sd);
 
 	memset(item_name, '\0', sizeof(item_name));
 
-	if(!message || !*message || (
+	if(!strcmpi(command+1,"itembound2") && (!message || !*message || (
+		sscanf(message, "\"%99[^\"]\" %d %d %d %d %d %d %d %d %d", item_name, &number, &identify, &refine, &attr, &c1, &c2, &c3, &c4, &bound) < 10 &&
+		sscanf(message, "%99s %d %d %d %d %d %d %d %d %d", item_name, &number, &identify, &refine, &attr, &c1, &c2, &c3, &c4, &bound) < 10 ))) {
+		clif_displaymessage(fd, msg_txt(296)); // Please enter all parameters (usage: @itembound2 <item name/ID> <quantity>
+		clif_displaymessage(fd, msg_txt(297)); //   <identify_flag> <refine> <attribute> <card1> <card2> <card3> <card4> <bound_type>).
+		return -1;
+	} else if(!message || !*message || (
 	       sscanf(message, "\"%99[^\"]\" %d %d %d %d %d %d %d %d", item_name, &number, &identify, &refine, &attr, &c1, &c2, &c3, &c4) < 9 &&
-	       sscanf(message, "%99s %d %d %d %d %d %d %d %d", item_name, &number, &identify, &refine, &attr, &c1, &c2, &c3, &c4) < 9
-	   )) {
+	       sscanf(message, "%99s %d %d %d %d %d %d %d %d", item_name, &number, &identify, &refine, &attr, &c1, &c2, &c3, &c4) < 9))
+	   {
 		clif_displaymessage(fd, msg_txt(984)); // Please enter all parameters (usage: @item2 <item name/ID> <quantity>
 		clif_displaymessage(fd, msg_txt(985)); //   <identify_flag> <refine> <attribute> <card1> <card2> <card3> <card4>).
 		return -1;
@@ -1259,6 +1285,11 @@ ACMD_FUNC(item2)
 
 	if(number <= 0)
 		number = 1;
+
+	if(!strcmpi(command+1,"itembound2") && !(bound >= IBT_MIN && bound <= IBT_MAX)) {
+		clif_displaymessage(fd, msg_txt(298)); // Invalid bound type
+		return -1;
+	}
 
 	item_id = 0;
 	if((item_data = itemdb_searchname(item_name)) != NULL ||
@@ -1270,9 +1301,14 @@ ACMD_FUNC(item2)
 		int loop, get_count, i;
 		loop = 1;
 		get_count = number;
-		if(item_data->type == IT_WEAPON || item_data->type == IT_ARMOR ||
-		   item_data->type == IT_PETEGG || item_data->type == IT_PETARMOR) {
-			loop = number;
+		if(!strcmpi(command+1,"itembound2"))
+			bound = 1;
+		if(!itemdb_isstackable2(item_data)) {
+			if(bound && (item_data->type == IT_PETEGG || item_data->type == IT_PETARMOR)) {
+				clif_displaymessage(fd, msg_txt(498)); // Cannot create bounded pet eggs or pet armors.
+				return -1;
+			}
+ 			loop = number;
 			get_count = 1;
 			if(item_data->type == IT_PETEGG) {
 				identify = 1;
@@ -1292,10 +1328,12 @@ ACMD_FUNC(item2)
 			item_tmp.identify = identify;
 			item_tmp.refine = refine;
 			item_tmp.attribute = attr;
+			item_tmp.bound = (unsigned char)bound;
 			item_tmp.card[0] = c1;
 			item_tmp.card[1] = c2;
 			item_tmp.card[2] = c3;
 			item_tmp.card[3] = c4;
+
 			if((flag = pc_additem(sd, &item_tmp, get_count, LOG_TYPE_COMMAND)))
 				clif_additem(sd, 0, 0, flag);
 		}
@@ -3639,12 +3677,12 @@ ACMD_FUNC(reload)
 
 	switch(option) {
 		case 0: itemdb_reload(); break;
-		case 1: mob_reload(); read_petdb(); merc_reload();
+		case 1: mob_reload(); read_petdb(); homun->reload();
 		#if VERSION == 1
 		reload_elementaldb();
 		#endif
 		break;
-		case 2: skill_reload(); merc_skill_reload(); pc_read_skill_tree();
+		case 2: skill_reload(); homun->reload_skill(); pc_read_skill_tree();
 		#if VERSION == 1
 		reload_elemental_skilldb();
 		#endif
@@ -3653,7 +3691,7 @@ ACMD_FUNC(reload)
 		case 4: pc_readdb(); break;
 		case 5: pc_groups_reload(); break;
 		case 6: do_reload_quest(); break;
-		case 7: merc_reload(); break;
+		case 7: homun->reload(); break;
 		case 8: read_petdb(); break;
 		case 9: pc_read_motd(); break;
 		case 10: {
@@ -5456,7 +5494,7 @@ ACMD_FUNC(useskill)
 	}
 
 	if(skill_id >= HM_SKILLBASE && skill_id < HM_SKILLBASE+MAX_HOMUNSKILL
-	   && sd->hd && merc_is_hom_active(sd->hd)) // (If used with @useskill, put the homunc as dest)
+	   && sd->hd && homun_alive(sd->hd)) // (If used with @useskill, put the homunc as dest)
 		bl = &sd->hd->bl;
 	else
 		bl = &sd->bl;
@@ -6985,22 +7023,22 @@ ACMD_FUNC(homlevel)
 		return -1;
 	}
 
-	if(!merc_is_hom_active(sd->hd)) {
+	if(!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
 	
 	hd = sd->hd;	
 	
-	if(!(nooverflow = hom_class2mapid(hd->homunculus.class_)))
+	if(!(nooverflow = homun->class2type(hd->homunculus.class_)))
 		return -1;
 		
-	nooverflow = ((nooverflow&HOM_S)?battle_config.hom_S_max_level:battle_config.hom_max_level);
+	nooverflow = ((nooverflow&HT_S)?battle_config.hom_S_max_level:battle_config.hom_max_level);
 
 	if (hd->homunculus.level >= nooverflow) // Already reach maximum level
 		return -1;
 
-	if((htype = hom_class2type(hd->homunculus.class_)) == HT_INVALID) {
+	if((htype = homun->class2type(hd->homunculus.class_)) == HT_INVALID) {
 		ShowError("atcommand_homlevel: invalid homun class %d (player %s)\n", hd->homunculus.class_,sd->status.name);
 		return -1;
 	}
@@ -7028,7 +7066,7 @@ ACMD_FUNC(homlevel)
 
 	do{
 		hd->homunculus.exp += hd->exp_next;
-	}while(hd->homunculus.level < nooverflow && merc_hom_levelup(hd));
+	}while(hd->homunculus.level < nooverflow && homun->levelup(hd));
 
 	status_calc_homunculus(hd,SCO_NONE);
 	status_percent_heal(&hd->bl, 100, 100);
@@ -7041,14 +7079,12 @@ ACMD_FUNC(homlevel)
  *------------------------------------------*/
 ACMD_FUNC(homevolution)
 {
-	nullpo_retr(-1, sd);
-
-	if(!merc_is_hom_active(sd->hd)) {
+	if (!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
 
-	if(!merc_hom_evolution(sd->hd)) {
+	if(!homun->evolve(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1255)); // Your homunculus doesn't evolve.
 		return -1;
 	}
@@ -7058,10 +7094,10 @@ ACMD_FUNC(homevolution)
 
 ACMD_FUNC(hommutate)
 {
-	int homun_id, m_class = 0, m_id;
-	nullpo_retr(-1, sd);
+	int homun_id;
+	enum homun_type m_class, m_id;
 
-	if(!merc_is_hom_active(sd->hd)) {
+	if(!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
@@ -7072,11 +7108,11 @@ ACMD_FUNC(hommutate)
 		homun_id = atoi(message);
 	}
 
-	m_class = hom_class2mapid(sd->hd->homunculus.class_);
-	m_id    = hom_class2mapid(homun_id);
+	m_class = homun->class2type(sd->hd->homunculus.class_);
+	m_id	= homun->class2type(homun_id);
 
-	if(m_class != HT_INVALID && m_id != HT_INVALID && m_class == HOM_EVO && m_id == HOM_S && sd->hd->homunculus.level >= 99) {
-		hom_mutate(sd->hd, homun_id);
+	if(m_class != HT_INVALID && m_id != HT_INVALID && m_class == HT_EVO && m_id == HT_S && sd->hd->homunculus.level >= 99) {
+		homun->mutate(sd->hd, homun_id);
 	} else {
 		clif_emotion(&sd->hd->bl, E_SWT);
 	}
@@ -7105,11 +7141,11 @@ ACMD_FUNC(makehomun)
 
 	homunid = atoi(message);
 
-	if(homunid == -1 && sd->status.hom_id && !merc_is_hom_active(sd->hd)) {
+	if(homunid == -1 && sd->status.hom_id && !homun_alive(sd->hd)) {
 		if(sd->hd->homunculus.vaporize )
-			merc_resurrect_homunculus(sd, 100, sd->bl.x, sd->bl.y);
+			homun->ressurect(sd, 100, sd->bl.x, sd->bl.y);
 		else
-			merc_call_homunculus(sd);
+			homun->call(sd);
 		return 0;
 	}
 
@@ -7123,7 +7159,7 @@ ACMD_FUNC(makehomun)
 		return -1;
 	}
 
-	merc_create_homunculus_request(sd,homunid);
+	homun->creation_request(sd,homunid);
 	return 0;
 }
 
@@ -7136,7 +7172,7 @@ ACMD_FUNC(homfriendly)
 
 	nullpo_retr(-1, sd);
 
-	if(!merc_is_hom_active(sd->hd)) {
+	if(!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
@@ -7163,7 +7199,7 @@ ACMD_FUNC(homhungry)
 
 	nullpo_retr(-1, sd);
 
-	if(!merc_is_hom_active(sd->hd)) {
+	if(!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
@@ -7201,7 +7237,7 @@ ACMD_FUNC(homtalk)
 	    (sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOCHAT)))
 		return -1;
 
-	if(!merc_is_hom_active(sd->hd)) {
+	if(!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
@@ -7226,7 +7262,7 @@ ACMD_FUNC(hominfo)
 	struct status_data *status;
 	nullpo_retr(-1, sd);
 
-	if(!merc_is_hom_active(sd->hd)) {
+	if(!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
@@ -7265,7 +7301,7 @@ ACMD_FUNC(homstats)
 
 	nullpo_retr(-1, sd);
 
-	if(!merc_is_hom_active(sd->hd)) {
+	if(!homun_alive(sd->hd)) {
 		clif_displaymessage(fd, msg_txt(1254)); // You do not have a homunculus.
 		return -1;
 	}
@@ -7332,7 +7368,7 @@ ACMD_FUNC(homshuffle)
 	if(!sd->hd)
 		return -1; // nothing to do
 
-	if(!merc_hom_shuffle(sd->hd))
+	if(!homun->shuffle(sd->hd))
 		return -1;
 
 	clif_displaymessage(sd->fd, msg_txt(1275)); // Homunculus stats altered.
@@ -9566,7 +9602,22 @@ ACMD_FUNC(fontcolor) {
 	WFIFOSET(fd, msg_len + 12);
 	return 0;
 }
+ACMD_FUNC(searchstore){
+	int val = atoi(message);
 
+	switch(val) {
+		case 0://EFFECTTYPE_NORMAL
+		case 1://EFFECTTYPE_CASH
+			break;
+		default:
+			val = 0;
+			break;
+	}
+
+	searchstore_open(sd, 99, val);
+
+	return 0;
+}
 ACMD_FUNC(costume) {
 
 	const char* names[4] = {
@@ -9660,6 +9711,8 @@ void atcommand_basecommands(void)
 		ACMD_DEF(heal),
 		ACMD_DEF(item),
 		ACMD_DEF(item2),
+		ACMD_DEF2("itembound", item),
+		ACMD_DEF2("itembound2", item2),
 		ACMD_DEF(itemreset),
 		ACMD_DEF(clearstorage),
 		ACMD_DEF(cleargstorage),
@@ -9880,6 +9933,7 @@ void atcommand_basecommands(void)
 		ACMD_DEF(join),
 		ACMD_DEF(channel),
 		ACMD_DEF(fontcolor),
+		ACMD_DEF(searchstore),
 		ACMD_DEF(reload),
 #include "../custom/commands_def.inc"
 		ACMD_DEF(costume)
