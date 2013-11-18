@@ -305,6 +305,7 @@ const char *itemdb_typename(int type)
 		case IT_PETARMOR:       return "Pet Accessory";
 		case IT_AMMO:           return "Arrow/Ammunition";
 		case IT_DELAYCONSUME:   return "Delay-Consume Usable";
+		case IT_SHADOWGEAR:     return "Shadow Equipment";
 		case IT_CASH:           return "Cash Usable";
 	}
 	return "Unknown Type";
@@ -454,6 +455,7 @@ int itemdb_isequip(int nameid)
 		case IT_WEAPON:
 		case IT_ARMOR:
 		case IT_AMMO:
+		case IT_SHADOWGEAR:
 			return 1;
 		default:
 			return 0;
@@ -470,6 +472,7 @@ int itemdb_isequip2(struct item_data *data)
 		case IT_WEAPON:
 		case IT_ARMOR:
 		case IT_AMMO:
+		case IT_SHADOWGEAR:
 			return 1;
 		default:
 			return 0;
@@ -487,6 +490,7 @@ int itemdb_isstackable(int nameid)
 		case IT_ARMOR:
 		case IT_PETEGG:
 		case IT_PETARMOR:
+		case IT_SHADOWGEAR:
 			return 0;
 		default:
 			return 1;
@@ -504,6 +508,7 @@ int itemdb_isstackable2(struct item_data *data)
 		case IT_ARMOR:
 		case IT_PETEGG:
 		case IT_PETARMOR:
+		case IT_SHADOWGEAR:
 			return 0;
 		default:
 			return 1;
@@ -512,51 +517,41 @@ int itemdb_isstackable2(struct item_data *data)
 
 
 /*==========================================
- * Trade Restriction functions [Skotlex]
+ * Bound Restriction functions [Megasantos/brAthena]
  *------------------------------------------*/
 int itemdb_isdropable_sub(struct item_data *item, int gmlv, int unused)
 {
-	return (item && (!(item->flag.trade_restriction&1) || gmlv >= item->gm_lv_trade_override));
+	return (item && (!(item->item_bound.drop) || gmlv >= item->item_bound.override));
 }
 
 int itemdb_cantrade_sub(struct item_data *item, int gmlv, int gmlv2)
 {
-	return (item && (!(item->flag.trade_restriction&2) || gmlv >= item->gm_lv_trade_override || gmlv2 >= item->gm_lv_trade_override));
+	return (item && (!(item->item_bound.trade) || gmlv >= item->item_bound.override || gmlv2 >= item->item_bound.override));
 }
 
-int itemdb_canpartnertrade_sub(struct item_data *item, int gmlv, int gmlv2)
+int itemdb_cancart_sub(struct item_data *item, int gmlv, int unused)
 {
-	return (item && (item->flag.trade_restriction&4 || gmlv >= item->gm_lv_trade_override || gmlv2 >= item->gm_lv_trade_override));
+	return (item && (!(item->item_bound.cart) || gmlv >= item->item_bound.override));
 }
 
 int itemdb_cansell_sub(struct item_data *item, int gmlv, int unused)
 {
-	return (item && (!(item->flag.trade_restriction&8) || gmlv >= item->gm_lv_trade_override));
-}
-
-int itemdb_cancartstore_sub(struct item_data *item, int gmlv, int unused)
-{
-	return (item && (!(item->flag.trade_restriction&16) || gmlv >= item->gm_lv_trade_override));
+	return (item && (!(item->item_bound.vending) || gmlv >= item->item_bound.override));
 }
 
 int itemdb_canstore_sub(struct item_data *item, int gmlv, int unused)
 {
-	return (item && (!(item->flag.trade_restriction&32) || gmlv >= item->gm_lv_trade_override));
-}
-
-int itemdb_canguildstore_sub(struct item_data *item, int gmlv, int unused)
-{
-	return (item && (!(item->flag.trade_restriction&64) || gmlv >= item->gm_lv_trade_override));
+	return (item && (!(item->item_bound.storage) || gmlv >= item->item_bound.override));
 }
 
 int itemdb_canmail_sub(struct item_data *item, int gmlv, int unused)
 {
-	return (item && (!(item->flag.trade_restriction&128) || gmlv >= item->gm_lv_trade_override));
+	return (item && (!(item->item_bound.mail) || gmlv >= item->item_bound.override));
 }
 
 int itemdb_canauction_sub(struct item_data *item, int gmlv, int unused)
 {
-	return (item && (!(item->flag.trade_restriction&256) || gmlv >= item->gm_lv_trade_override));
+	return (item && (!(item->item_bound.auction) || gmlv >= item->item_bound.override));
 }
 
 int itemdb_isrestricted(struct item *item, int gmlv, int gmlv2, int (*func)(struct item_data *, int, int))
@@ -577,7 +572,6 @@ int itemdb_isrestricted(struct item *item, int gmlv, int gmlv2, int (*func)(stru
 	}
 	return 1;
 }
-
 /*==========================================
  *  Specifies if item-type should drop unidentified.
  *------------------------------------------*/
@@ -1156,37 +1150,47 @@ void itemdb_read_packages(void) {
 }
 #endif
 /*==========================================
- * Reads item trade restrictions [Skotlex]
+ * Reads bound restrictions [Megasantos/brAthena]
  *------------------------------------------*/
-static bool itemdb_read_itemtrade(char *str[], int columns, int current)
+static bool ItemMoveInfo(char *str[], int columns, int current)
 {
 	// <nameid>,<mask>,<gm level>
-	int nameid, flag, gmlv;
+	int nameid, drop, trade, storage, cart, vending, mail, auction, bindonequip, gmlv;
 	struct item_data *id;
 
 	nameid = atoi(str[0]);
 
 	if((id = itemdb_exists(nameid)) == NULL) {
-		//ShowWarning("itemdb_read_itemtrade: Invalid item id %d.\n", nameid);
+		//ShowWarning("ItemMoveInfo: Invalid item id %d.\n", nameid);
 		//return false;
 		// FIXME: item_trade.txt contains items, which are commented in item database.
 		return true;
 	}
 
-	flag = atoi(str[1]);
-	gmlv = atoi(str[2]);
+	drop = atoi(str[1]);
+	trade = atoi(str[2]);
+	storage = atoi(str[3]);
+	cart = atoi(str[4]);
+	vending = atoi(str[5]);
+	mail = atoi(str[6]);
+	auction = atoi(str[7]);
+	bindonequip = atoi(str[8]);
+	gmlv = atoi(str[9]);
 
-	if(flag < 0 || flag > 511) {  //Check range
-		ShowWarning("itemdb_read_itemtrade: Invalid trading mask %d for item id %d.\n", flag, nameid);
-		return false;
-	}
 	if(gmlv < 1) {
-		ShowWarning("itemdb_read_itemtrade: Invalid override GM level %d for item id %d.\n", gmlv, nameid);
+		ShowWarning("ItemMoveInfo: Invalid override GM level %d for item id %d.\n", gmlv, nameid);
 		return false;
 	}
 
-	id->flag.trade_restriction = flag;
-	id->gm_lv_trade_override = gmlv;
+	id->item_bound.drop = drop;
+	id->item_bound.trade = trade;
+	id->item_bound.storage = storage;
+	id->item_bound.cart = cart;
+	id->item_bound.vending = vending;
+	id->item_bound.mail = mail;
+	id->item_bound.auction = auction;
+	id->flag.bindonequip = bindonequip;
+	id->item_bound.override = gmlv;
 
 	return true;
 }
@@ -1492,7 +1496,7 @@ static bool itemdb_parse_dbrow(char **str, const char *source, int line, int scr
 
 	id->type = atoi(str[3]);
 
-	if(id->type < 0 || id->type == IT_UNKNOWN || id->type == IT_UNKNOWN2 || (id->type > IT_DELAYCONSUME && id->type < IT_CASH) || id->type >= IT_MAX) {
+	if(id->type < 0 || id->type == IT_UNKNOWN || id->type == IT_UNKNOWN2 || (id->type > IT_SHADOWGEAR && id->type < IT_CASH) || id->type >= IT_MAX) {
 		// catch invalid item types
 		ShowWarning("itemdb_parse_dbrow: Invalid item type %d for item %d. IT_ETC will be used.\n", id->type, nameid);
 		id->type = IT_ETC;
@@ -1697,7 +1701,7 @@ static void itemdb_read(void)
 #endif
 
 	sv_readsqldb(get_database_name(20), NULL, 2, -1, &itemdb_read_itemavail);
-	sv_readsqldb(get_database_name(22), NULL, 3, -1, &itemdb_read_itemtrade);
+	sv_readsqldb(get_database_name(22), NULL, 10, -1, &ItemMoveInfo);
 	sv_readsqldb(get_database_name(23), NULL, 2, -1, &itemdb_read_itemdelay);
 	sv_readsqldb(get_database_name(24), NULL, 3, -1, &itemdb_read_stack);
 	sv_readsqldb(get_database_name(25), NULL, 1, -1, &itemdb_read_buyingstore);

@@ -1390,7 +1390,7 @@ int map_addflooritem(struct item *item_data,int amount,int16 m,int16 x,int16 y,i
 
 	nullpo_ret(item_data);
 
-	if(!(flags&4) && battle_config.item_onfloor && (itemdb_traderight(item_data->nameid)&1))
+	if(!(flags&4) && battle_config.item_onfloor && (itemdb_traderight(item_data->nameid)))
 		return 0; //can't be dropped
 
 	if(!map_searchrandfreecell(m,&x,&y,flags&2?1:0))
@@ -1578,6 +1578,9 @@ int map_quit(struct map_session_data *sd)
 		//Non-active players should not have loaded any data yet (or it was cleared already) so no additional cleanups are needed.
 		return 0;
 	}
+
+	if(sd->expiration_tid != INVALID_TIMER)
+		delete_timer(sd->expiration_tid,pc_expiration_timer);
 
 	if(sd->npc_timer_id != INVALID_TIMER)  //Cancel the event timer.
 		npc_timerevent_quit(sd);
@@ -3668,7 +3671,7 @@ char *get_database_name(int database_id)
 		case 19: db_name = "guild_skill_tree_db"; break;
 		case 20: db_name = "item_avail_db"; break;
 		case 21: db_name = "item_noequip_db"; break;
-		case 22: db_name = "item_trade_db"; break;
+		case 22: db_name = "item_move_info_db"; break;
 		case 23: db_name = "item_delay_db"; break;
 		#if VERSION == 1
 		case 24: db_name = "item_stack_db"; break;

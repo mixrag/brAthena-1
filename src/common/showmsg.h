@@ -19,6 +19,7 @@
 
 #include "libconfig.h"
 #include "lang.h"
+#include <stdarg.h>
 
 // for help with the console colors look here:
 // http://www.edoceo.com/liberum/?doc=printf-with-color
@@ -127,6 +128,8 @@ extern void ShowDebug(const char *, ...);
 extern void ShowError(const char *, ...);
 extern void ShowFatalError(const char *, ...);
 extern void ShowConfigWarning(config_setting_t *config, const char *string, ...);
+
+extern int _vShowMessage(enum msg_type flag, const char *string, va_list ap);
 
 extern void read_brathena_config(void);
 

@@ -985,10 +985,10 @@ int pc_isequip(struct map_session_data *sd,int n)
 		return 0;
 	//Not usable by upper class. [Inkfish]
 	while(1) {
-		if(item->class_upper&1 && !(sd->class_&(JOBL_UPPER|JOBL_THIRD|JOBL_BABY))) break;
-		if(item->class_upper&2 && sd->class_&(JOBL_UPPER|JOBL_THIRD)) break;
-		if(item->class_upper&4 && sd->class_&JOBL_BABY) break;
-		if(item->class_upper&8 && sd->class_&JOBL_THIRD) break;
+		if(item->class_upper&ITEMUPPER_NORMAL && !(sd->class_&(JOBL_UPPER|JOBL_THIRD|JOBL_BABY))) break;
+		if(item->class_upper&ITEMUPPER_UPPER  && sd->class_&(JOBL_UPPER|JOBL_THIRD)) break;
+		if(item->class_upper&ITEMUPPER_BABY   && sd->class_&JOBL_BABY) break;
+		if(item->class_upper&ITEMUPPER_THIRD  && sd->class_&JOBL_THIRD) break;
 		return 0;
 	}
 
@@ -999,7 +999,7 @@ int pc_isequip(struct map_session_data *sd,int n)
  * No problem with the session id
  * set the status that has been sent from char server
  *------------------------------------------*/
-bool pc_authok(struct map_session_data *sd, int login_id2, time_t expiration_time, int group_id, struct mmo_charstatus *st, bool changing_mapservers)
+bool pc_authok(struct map_session_data *sd, int login_id2, unsigned int expiration_time, int group_id, struct mmo_charstatus *st, bool changing_mapservers)
 {
 	int i;
 	unsigned long tick = gettick();
@@ -1050,6 +1050,7 @@ bool pc_authok(struct map_session_data *sd, int login_id2, time_t expiration_tim
 	sd->pvp_timer = INVALID_TIMER;
 	sd->fontcolor_tid = INVALID_TIMER;
 	sd->vip_timer = INVALID_TIMER;
+	sd->expiration_tid = INVALID_TIMER;
 	/**
 	 * For the Secure NPC Timeout option (check config/Secure.h) [RR]
 	 **/
@@ -1178,11 +1179,8 @@ bool pc_authok(struct map_session_data *sd, int login_id2, time_t expiration_tim
 				clif_displaymessage(sd->fd, motd_text[i]);
 		}
 
-		// message of the limited time of the account
-		if(expiration_time != 0) {  // don't display if it's unlimited or unknow value
-			char tmpstr[1024];
-			strftime(tmpstr, sizeof(tmpstr) - 1, msg_txt(501), localtime(&expiration_time)); // "Your account time limit is: %d-%m-%Y %H:%M:%S."
-			clif_wis_message(sd->fd, wisp_server_name, tmpstr, strlen(tmpstr)+1);
+		if(expiration_time != 0) {			
+			sd->expiration_time = expiration_time;
 		}
 
 		/**
@@ -4045,6 +4043,8 @@ int pc_delitem(struct map_session_data *sd,int n,int amount,int type, short reas
  *------------------------------------------*/
 int pc_dropitem(struct map_session_data *sd,int n,int amount)
 {
+	int flag = (pc_candrop(sd,&sd->status.inventory[n]) ? 4 : 2);
+
 	nullpo_retr(1, sd);
 
 	if(n < 0 || n >= MAX_INVENTORY)
@@ -4061,7 +4061,7 @@ int pc_dropitem(struct map_session_data *sd,int n,int amount)
 	  )
 		return 0;
 
-	if(map[sd->bl.m].flag.nodrop || pc_has_permission(sd,PC_PERM_CAN_DROPS)) {
+	if(map[sd->bl.m].flag.nodrop || pc_has_permission(sd,PC_PERM_DISABLE_DROPS)) {
 		clif_displaymessage(sd->fd, msg_txt(271));
 		return 0; //Can't drop items in nodrop mapflag maps.
 	}
@@ -4071,7 +4071,7 @@ int pc_dropitem(struct map_session_data *sd,int n,int amount)
 		return 0;
 	}
 
-	if(!map_addflooritem(&sd->status.inventory[n], amount, sd->bl.m, sd->bl.x, sd->bl.y, 0, 0, 0, 2))
+	if(!map_addflooritem(&sd->status.inventory[n], amount, sd->bl.m, sd->bl.x, sd->bl.y, 0, 0, 0, flag))
 		return 0;
 
 	pc_delitem(sd, n, amount, 1, 0, LOG_TYPE_PICKDROP_PLAYER);
@@ -4297,22 +4297,22 @@ int pc_isUseitem(struct map_session_data *sd,int n)
 	//Not usable by upper class. [Inkfish]
 	while(1) {
 		// Normal classes (no upper, no baby, no third classes)
-		if( item->class_upper&0x01 && !(sd->class_&(JOBL_UPPER|JOBL_THIRD|JOBL_BABY)) ) break;
+		if( item->class_upper&ITEMUPPER_NORMAL && !(sd->class_&(JOBL_UPPER|JOBL_THIRD|JOBL_BABY)) ) break;
 #if VERSION == 1
 		// Upper classes (no third classes)
-		if( item->class_upper&0x02 && sd->class_&JOBL_UPPER && !(sd->class_&JOBL_THIRD) ) break;
+		if( item->class_upper&ITEMUPPER_UPPER && sd->class_&JOBL_UPPER && !(sd->class_&JOBL_THIRD) ) break;
 #else
 		//pre-re has no use for the extra, so we maintain the previous for backwards compatibility
-		if( item->class_upper&0x02 && sd->class_&(JOBL_UPPER|JOBL_THIRD) ) break;
+		if( item->class_upper&ITEMUPPER_UPPER && sd->class_&(JOBL_UPPER|JOBL_THIRD) ) break;
 #endif
 		// Baby classes (no third classes)
-		if( item->class_upper&0x04 && sd->class_&JOBL_BABY && !(sd->class_&JOBL_THIRD) ) break;
+		if( item->class_upper&ITEMUPPER_BABY && sd->class_&JOBL_BABY && !(sd->class_&JOBL_THIRD) ) break;
 		// Third classes (no upper, no baby classes)
-		if( item->class_upper&0x08 && sd->class_&JOBL_THIRD && !(sd->class_&(JOBL_UPPER|JOBL_BABY)) ) break;
+		if( item->class_upper&ITEMUPPER_THIRD && sd->class_&JOBL_THIRD && !(sd->class_&(JOBL_UPPER|JOBL_BABY)) ) break;
 		// Upper third classes
-		if( item->class_upper&0x10 && sd->class_&JOBL_THIRD && sd->class_&JOBL_UPPER ) break;
+		if( item->class_upper&ITEMUPPER_THURDUPPER && sd->class_&JOBL_THIRD && sd->class_&JOBL_UPPER ) break;
 		// Baby third classes
-		if( item->class_upper&0x20 && sd->class_&JOBL_THIRD && sd->class_&JOBL_BABY ) break;
+		if( item->class_upper&ITEMUPPER_THIRDBABY && sd->class_&JOBL_THIRD && sd->class_&JOBL_BABY ) break;
 		return 0;
 	}
 
@@ -4494,7 +4494,7 @@ int pc_cart_additem(struct map_session_data *sd,struct item *item_data,int amoun
 		return 1;
 	}
 
-	if(!itemdb_cancartstore(item_data, pc_get_group_level(sd)) || (item_data->bound > IBT_ACCOUNT && !pc_can_give_bound_items(sd))) {
+	if(!itemdb_cancart(item_data, pc_get_group_level(sd)) || (item_data->bound > IBT_ACCOUNT && !pc_can_give_bound_items(sd))) {
 		// Check item trade restrictions  [Skotlex]
 		clif_displaymessage(sd->fd, msg_txt(264));
 		return 1; /* TODO: there is no official response to this? */
@@ -6532,7 +6532,7 @@ int pc_resetskill(struct map_session_data *sd, int flag)
 		if(pc_checkskill(sd, SG_DEVIL) &&  !pc_nextjobexp(sd))
 			clif_status_change_end(&sd->bl, sd->bl.id, SELF, SI_DEVIL1);
 		i = sd->sc.option;
-		if(i&OPTION_RIDING && pc_checkskill(sd, KN_RIDING))
+		if(i&OPTION_RIDING && (!pc_checkskill(sd, KN_RIDING)|| (sd->class_&MAPID_THIRDMASK) == MAPID_RUNE_KNIGHT))
 			i &= ~OPTION_RIDING;
 		if(i&OPTION_FALCON && pc_checkskill(sd, HT_FALCON))
 			i &= ~OPTION_FALCON;
@@ -8718,10 +8718,22 @@ int pc_equipitem(struct map_session_data *sd,int n,int req_pos)
 		return 0;
 	}
 
+	/* won't fail from this point onwards */
+	if(id->flag.bindonequip && !sd->status.inventory[n].bound) {
+		sd->status.inventory[n].bound = (unsigned char)IBT_CHARACTER;
+		clif->notify_bounditem(sd,n);
+	}
+
 	if(pos == EQP_ACC) { //Accesories should only go in one of the two,
 		pos = req_pos&EQP_ACC;
 		if(pos == EQP_ACC)  //User specified both slots..
 			pos = sd->equip_index[EQI_ACC_R] >= 0 ? EQP_ACC_L : EQP_ACC_R;
+	}
+
+	if(pos == EQP_SHADOW_ACC) { // Shadow System
+		pos = req_pos&EQP_SHADOW_ACC;
+		if (pos == EQP_SHADOW_ACC)
+			pos = sd->equip_index[EQI_SHADOW_ACC_L] >= 0 ? EQP_SHADOW_ACC_R : EQP_SHADOW_ACC_L;
 	}
 
 	if(pos == EQP_ARMS && id->equip == EQP_HAND_R) {
@@ -10282,8 +10294,10 @@ int pc_readdb(void)
 				while(*p==32 && *p>0)
 					p++;
 				attr_fix_table[lv-1][i][j]=atoi(p);
+#if VERSION != 1
 				if(battle_config.attr_recover == 0 && attr_fix_table[lv-1][i][j] < 0)
 					attr_fix_table[lv-1][i][j] = 0;
+#endif
 				p=strchr(p,',');
 				if(p) *p++=0;
 			}
@@ -10463,6 +10477,64 @@ void pc_bank_withdraw(struct map_session_data *sd, int money) {
 /* status change data arrived from char-server */
 void pc_scdata_received(struct map_session_data *sd) {
 	pc_inventory_rentals(sd);
+	if(sd->expiration_time != 0) { // don't display if it's unlimited or unknow value
+		time_t exp_time = sd->expiration_time;
+		char tmpstr[1024];
+		strftime(tmpstr, sizeof(tmpstr) - 1, msg_txt(501), localtime(&exp_time)); // "Your account time limit is: %d-%m-%Y %H:%M:%S."
+		clif_wis_message(sd->fd, wisp_server_name, tmpstr, strlen(tmpstr)+1);
+
+		pc_expire_check(sd);
+	}
+}
+int pc_expiration_timer(int tid, unsigned int tick, int id, intptr_t data) {
+	struct map_session_data *sd = map_id2sd(id);
+
+	if(!sd) return 0;
+
+	sd->expiration_tid = INVALID_TIMER;
+
+	if(sd->fd)
+		clif_authfail_fd(sd->fd,10);
+
+	map_quit(sd);
+
+	return 0;
+}
+/* this timer exists only when a character with a expire timer > 24h is online */
+/* it loops thru online players once an hour to check whether a new < 24h is available */
+int pc_global_expiration_timer(int tid, unsigned int tick, int id, intptr_t data) {
+	struct s_mapiterator* iter;
+	struct map_session_data* sd;
+
+	iter = mapit_getallusers();
+
+	for(sd = (TBL_PC*)mapit_first(iter); mapit_exists(iter); sd = (TBL_PC*)mapit_next(iter)) {
+		if(sd->expiration_time)
+			pc_expire_check(sd);
+	}
+
+	mapit_free(iter);
+
+	return 0;
+}
+void pc_expire_check(struct map_session_data *sd) {	
+	/* ongoing timer */
+	if(sd->expiration_tid != INVALID_TIMER)
+		return;
+
+	/* not within the next 24h, enable the global check */
+	if(sd->expiration_time > (time(NULL) + ((60 * 60) * 24))) {
+
+		/* global check not running, enable */
+		if(pc_expiration_tid == INVALID_TIMER ) {
+			/* starts in 1h, repeats every hour */
+			pc_expiration_tid = add_timer_interval(gettick() + ((1000*60)*60), pc_global_expiration_timer, 0, 0, ((1000*60)*60));
+		}
+
+		return;
+	}
+
+	sd->expiration_tid = add_timer(gettick() + (int)(sd->expiration_time - time(NULL))*1000, pc_expiration_timer, sd->bl.id, 0);
 }
 
 unsigned int equip_pos[EQI_MAX]={EQP_ACC_L,EQP_ACC_R,EQP_SHOES,EQP_GARMENT,EQP_HEAD_LOW,EQP_HEAD_MID,EQP_HEAD_TOP,EQP_ARMOR,EQP_HAND_L,EQP_HAND_R,EQP_COSTUME_HEAD_TOP,EQP_COSTUME_HEAD_MID,EQP_COSTUME_HEAD_LOW,EQP_COSTUME_GARMENT,EQP_AMMO, EQP_SHADOW_ARMOR, EQP_SHADOW_WEAPON, EQP_SHADOW_SHIELD, EQP_SHADOW_SHOES, EQP_SHADOW_ACC_R, EQP_SHADOW_ACC_L };
@@ -10497,6 +10569,8 @@ int do_init_pc(void)
 	add_timer_func_list(pc_follow_timer, "pc_follow_timer");
 	add_timer_func_list(pc_endautobonus, "pc_endautobonus");
 	add_timer_func_list(pc_charm_timer, "pc_charm_timer");
+	add_timer_func_list(pc_global_expiration_timer,"pc_global_expiration_timer");
+	add_timer_func_list(pc_expiration_timer,"pc_expiration_timer");
 
 	add_timer(gettick() + autosave_interval, pc_autosave, 0, 0);
 

@@ -13511,7 +13511,7 @@ OnEnable:
 
 OnTouch:
 	soundeffect "wander_man_move.wav",1;
-	sc_start sc_blind,600000,0;
+	sc_start SC_BLIND,600000,0;
 	mes "As soon as you touched the crystal,";
 	mes "you feel your body being pulled into the space gap.";
 	mes "You remember Kidd's confused voice, screaming your name.";
@@ -13541,7 +13541,7 @@ OnTouch:
 	mes "I'm not going to let you run away again!";
 	next;
 	soundeffect "wander_man_move.wav",1;
-	sc_end sc_blind;
+	sc_end SC_BLIND;
 	mes "[" + strcharinfo(0) + "]";
 	mes "... !!!!";
 	mes "Rin!!!!";

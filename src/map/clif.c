@@ -678,7 +678,7 @@ void clif_authrefuse(int fd, uint8 error_code)
 /// Notifies the client of a ban or forced disconnect (SC_NOTIFY_BAN).
 /// 0081 <error code>.B
 /// error code:
-///     0 = BAN_UNFAIR
+///     0 = BAN_UNFAIR -> "disconnected from server" -> MsgStringTable[3]
 ///     1 = server closed -> MsgStringTable[4]
 ///     2 = ID already logged in -> MsgStringTable[5]
 ///     3 = timeout/too much lag -> MsgStringTable[241]
@@ -1837,7 +1837,6 @@ void clif_selllist(struct map_session_data *sd)
 		if(sd->status.inventory[i].nameid > 0 && sd->inventory_data[i]) {
 			if(!itemdb_cansell(&sd->status.inventory[i], pc_get_group_level(sd)))
 				continue;
-
 			if(sd->status.inventory[i].expire_time)
 				continue; // Cannot Sell Rental Items
 
@@ -2260,7 +2259,7 @@ void clif_additem(struct map_session_data *sd, int n, int amount, int fail)
 		/* why restrict the flag to non-stackable? because this is the only packet allows stackable to,
 		 * show the color, and therefore it'd be inconsistent with the rest (aka it'd show yellow, you relog/refresh and boom its gone)
 		 */
-		p.bindOnEquipType = sd->status.inventory[n].bound && !itemdb_isstackable2(sd->inventory_data[n]) ? 2 : 0;
+		p.bindOnEquipType = sd->status.inventory[n].bound && !itemdb_isstackable2(sd->inventory_data[n]) ? 2 : sd->inventory_data[n]->flag.bindonequip ? 1 : 0;
 #endif
 	}
 	p.result = (unsigned char)fail;
@@ -2373,7 +2372,7 @@ void clif_item_equip(short idx, struct EQUIPITEM_INFO *p, struct item *i, struct
 #endif
 	
 #if PACKETVER >= 20080102
-	p->bindOnEquipType = i->bound ? 2 : 0;
+	p->bindOnEquipType = i->bound ? 2 : id->flag.bindonequip ? 1 : 0;
 #endif
 
 #if PACKETVER >= 20100629
@@ -2492,40 +2491,46 @@ void clif_equiplist(struct map_session_data *sd) {
 }
 
 void clif_storagelist(struct map_session_data *sd, struct item *items, int items_length) {
-	int i, normal = 0, equip = 0;
+	int i = 0;
 	struct item_data *id;
 
-	for(i = 0; i < items_length; i++) {
+	do {
+		int normal = 0, equip = 0, k = 0;
 
-		if(items[i].nameid <= 0)
-			continue;
+		for(; i < items_length && k < 500; i++, k++ ) {
 
-		id = itemdb_search(items[i].nameid);
-		if(!itemdb_isstackable2(id)) //Non-stackable (Equippable)
-			clif_item_equip(i+1,&storelist_equip.list[equip++],&items[i],id,id->equip);
-		else //Stackable (Normal)
-			clif_item_normal(i+1,&storelist_normal.list[normal++],&items[i],id);
-	}
+			if(items[i].nameid <= 0)
+				continue;
 
-	if(normal) {
-		storelist_normal.PacketType   = storagelistnormalType;
-		storelist_normal.PacketLength =  (sizeof( storelist_normal) - sizeof(storelist_normal.list)) + (sizeof(struct NORMALITEM_INFO) * normal);
+			id = itemdb_search(items[i].nameid);
+			if(!itemdb_isstackable2(id)) //Non-stackable (Equippable)
+				clif_item_equip(i+1,&storelist_equip.list[equip++],&items[i],id,id->equip);
+			else //Stackable (Normal)
+				clif_item_normal(i+1,&storelist_normal.list[normal++],&items[i],id);
+		}
+
+		if(normal) {
+			storelist_normal.PacketType   = storagelistnormalType;
+			storelist_normal.PacketLength =  (sizeof( storelist_normal) - sizeof(storelist_normal.list)) + (sizeof(struct NORMALITEM_INFO) * normal);
 #if PACKETVER >= 20120925
-		safestrncpy(storelist_normal.name, "Storage", NAME_LENGTH);
+			safestrncpy(storelist_normal.name, "Storage", NAME_LENGTH);
 #endif
-		clif_send(&storelist_normal, storelist_normal.PacketLength, &sd->bl, SELF);
-	}
+			clif_send(&storelist_normal, storelist_normal.PacketLength, &sd->bl, SELF);
+		}
 
-	if(equip) {
-		storelist_equip.PacketType   = storagelistequipType;
-		storelist_equip.PacketLength = (sizeof(storelist_equip) - sizeof(storelist_equip.list)) + (sizeof(struct EQUIPITEM_INFO) * equip);
+		if(equip) {
+			storelist_equip.PacketType   = storagelistequipType;
+			storelist_equip.PacketLength = (sizeof(storelist_equip) - sizeof(storelist_equip.list)) + (sizeof(struct EQUIPITEM_INFO) * equip);
 
 #if PACKETVER >= 20120925
-		safestrncpy(storelist_equip.name, "Storage", NAME_LENGTH);
+			safestrncpy(storelist_equip.name, "Storage", NAME_LENGTH);
 #endif
 
-		clif_send(&storelist_equip, storelist_equip.PacketLength, &sd->bl, SELF);
-	}
+			clif_send(&storelist_equip, storelist_equip.PacketLength, &sd->bl, SELF);
+		}
+
+	} while ( i < items_length );
+
 }
 
 void clif_cartlist(struct map_session_data *sd) {
@@ -5403,7 +5408,29 @@ void clif_displaymessage(const int fd, const char *mes)
 		aFree(message);
 	}
 }
+/* oh noo! another version of 0x8e! */
+void clif_displaymessage_sprintf(const int fd, const char* mes, ...) {
+	va_list ap = NULL;
 
+	int len = 1;
+	char *ptr;
+
+	WFIFOHEAD(fd, 5 + 255);/* ensure the maximum */
+
+	/* process */
+	len += vsnprintf((char *)WFIFOP(fd,4), 255, mes, ap);
+	va_end(ap);
+
+	/* adjusting */
+	ptr = (char *)WFIFOP(fd,4);
+	ptr[len - 1] = '\0';
+
+	/* */
+	WFIFOW(fd,0) = 0x8e;
+	WFIFOW(fd,2) = 5 + len; // 4 + len + NULL teminate
+
+	WFIFOSET(fd, 5 + len);
+}
 /// Send broadcast message in yellow or blue without font formatting (ZC_BROADCAST).
 /// 009a <packet len>.W <message>.?B
 void clif_broadcast(struct block_list *bl, const char *mes, int len, int type, enum send_target target)
@@ -12810,7 +12837,7 @@ void clif_parse_OpenVending(int fd, struct map_session_data *sd)
 
 	if(sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOROOM)
 		return;
-	if(map[sd->bl.m].flag.novending || pc_has_permission(sd,PC_PERM_CAN_SHOP)) {
+	if(map[sd->bl.m].flag.novending || pc_has_permission(sd,PC_PERM_DISABLE_SHOP)) {
 		clif_displaymessage(sd->fd, msg_txt(276));  // "You can't open a shop on this map"
 		return;
 	}
@@ -12938,17 +12965,120 @@ void clif_parse_GuildRequestEmblem(int fd,struct map_session_data *sd)
 /// Validates data of a guild emblem (compressed bitmap)
 static bool clif_validate_emblem(const uint8 *emblem, unsigned long emblem_len)
 {
-	bool success;
+enum e_bitmapconst {
+		RGBTRIPLE_SIZE = 3,         // sizeof(RGBTRIPLE)
+		RGBQUAD_SIZE = 4,           // sizeof(RGBQUAD)
+		BITMAPFILEHEADER_SIZE = 14, // sizeof(BITMAPFILEHEADER)
+		BITMAPINFOHEADER_SIZE = 40, // sizeof(BITMAPINFOHEADER)
+		BITMAP_WIDTH = 24,
+		BITMAP_HEIGHT = 24,
+	};
+#pragma pack(push, 1)
+	struct s_bitmaptripple {
+		//uint8 b;
+		//uint8 g;
+		//uint8 r;
+		unsigned int rgb:24;
+	} __attribute__((packed));
+#pragma pack(pop)
 	uint8 buf[1800];  // no well-formed emblem bitmap is larger than 1782 (24 bit) / 1654 (8 bit) bytes
 	unsigned long buf_len = sizeof(buf);
+	int header = 0, bitmap = 0, offbits = 0, palettesize = 0, i = 0;
 
-	success = (decode_zip(buf, &buf_len, emblem, emblem_len) == 0 && buf_len >= 18)    // sizeof(BITMAPFILEHEADER) + sizeof(biSize) of the following info header struct
-	          && RBUFW(buf,0) == 0x4d42   // BITMAPFILEHEADER.bfType (signature)
-	          && RBUFL(buf,2) == buf_len  // BITMAPFILEHEADER.bfSize (file size)
-	          && RBUFL(buf,10) < buf_len  // BITMAPFILEHEADER.bfOffBits (offset to bitmap bits)
-	          ;
+	if(decode_zip(buf, &buf_len, emblem, emblem_len) != 0 || buf_len < BITMAPFILEHEADER_SIZE + BITMAPINFOHEADER_SIZE
+	 || RBUFW(buf,0) != 0x4d42 // BITMAPFILEHEADER.bfType (signature)
+	 || RBUFL(buf,2) != buf_len // BITMAPFILEHEADER.bfSize (file size)
+	 || RBUFL(buf,14) != BITMAPINFOHEADER_SIZE // BITMAPINFOHEADER.biSize (other headers are not supported)
+	 || RBUFL(buf,18) != BITMAP_WIDTH // BITMAPINFOHEADER.biWidth
+	 || RBUFL(buf,22) != BITMAP_HEIGHT // BITMAPINFOHEADER.biHeight (top-down bitmaps (-24) are not supported)
+	 || RBUFL(buf,30) != 0 // BITMAPINFOHEADER.biCompression == BI_RGB (compression not supported)
+	 ) {
+		// Invalid data
+		return false;
+	}
 
-	return success;
+	offbits = RBUFL(buf,10); // BITMAPFILEHEADER.bfOffBits (offset to bitmap bits)
+
+	switch( RBUFW(buf,28) ) { // BITMAPINFOHEADER.biBitCount
+		case 8:
+			palettesize = RBUFL(buf,46); // BITMAPINFOHEADER.biClrUsed (number of colors in the palette)
+			if( palettesize == 0 )
+				palettesize = 256; // Defaults to 2^n if set to zero
+			else if(palettesize > 256)
+				return false;
+			header = BITMAPFILEHEADER_SIZE + BITMAPINFOHEADER_SIZE + RGBQUAD_SIZE * palettesize; // headers + palette
+			bitmap = BITMAP_WIDTH * BITMAP_HEIGHT;
+			break;
+		case 24:
+			header = BITMAPFILEHEADER_SIZE + BITMAPINFOHEADER_SIZE;
+			bitmap = BITMAP_WIDTH * BITMAP_HEIGHT * RGBTRIPLE_SIZE;
+			break;
+		default:
+			return false;
+	}
+
+	// NOTE: This check gives a little freedom for bitmap-producing implementations,
+	// that align the start of bitmap data, which is harmless but unnecessary.
+	// If you want it paranoidly strict, change the first condition from < to !=.
+	// This also allows files with trailing garbage at the end of the file.
+	// If you want to avoid that, change the last condition to !=.
+	if( offbits < header || buf_len <= bitmap || offbits > buf_len - bitmap ) {
+		return false;
+	}
+
+	if( battle_config.emblem_transparency_limit < 100 ) {
+		int required_pixels = BITMAP_WIDTH * BITMAP_HEIGHT * (100 - battle_config.emblem_transparency_limit) / 100;
+		int found_pixels = 0;
+		/// Checks what percentage of a guild emblem is blank. A blank emblem
+		/// consists solely of magenta pixels. Since the client uses 16-bit
+		/// colors, any magenta shade that reduces to #ff00ff passes off as
+		/// transparent color as well (down to #f807f8).
+		///
+		/// Unlike real magenta, reduced magenta causes the guild window to
+		/// become see-through in the transparent parts of the emblem
+		/// background (glitch).
+		switch(RBUFW(buf,28)) {
+			case 8: // palette indexes
+			{
+				const uint8 *indexes = (const uint8 *)RBUFP(buf,offbits);
+				const uint32 *palette = (const uint32 *)RBUFP(buf,BITMAPFILEHEADER_SIZE + BITMAPINFOHEADER_SIZE);
+
+				for( i = 0; i < BITMAP_WIDTH * BITMAP_HEIGHT; i++ ) {
+					if( indexes[i] >= palettesize ) // Invalid color
+						return false;
+
+					// if( color->r < 0xF8 || color->g > 0x07 || color->b < 0xF8 )
+					if( ( palette[indexes[i]]&0x00F8F8F8 ) != 0x00F800F8 ) {
+						if( ++found_pixels >= required_pixels ) {
+							// Enough valid pixels were found
+							return true;
+						}
+					}
+				}
+				break;
+			}
+			case 24: // full colors
+			{
+				const struct s_bitmaptripple *pixels = (const struct s_bitmaptripple*)RBUFP(buf,offbits);
+
+				for( i = 0; i < BITMAP_WIDTH * BITMAP_HEIGHT; i++ ) {
+					// if( pixels[i].r < 0xF8 || pixels[i].g > 0x07 || pixels[i].b < 0xF8)
+					if( ( pixels[i].rgb&0xF8F8F8 ) != 0xF800F8 ) {
+						if( ++found_pixels >= required_pixels ) {
+							// Enough valid pixels were found
+							return true;
+						}
+					}
+				}
+				break;
+			}
+		}
+
+		// Not enough non-blank pixels found
+		return false;
+	}
+
+	return true;
 }
 
 
@@ -12958,6 +13088,7 @@ void clif_parse_GuildChangeEmblem(int fd,struct map_session_data *sd)
 {
 	unsigned long emblem_len = RFIFOW(fd,2)-4;
 	const uint8 *emblem = RFIFOP(fd,4);
+
 
 	if(!emblem_len || !sd->state.gmaster_flag)
 		return;
@@ -14931,7 +15062,7 @@ void clif_parse_Mail_send(int fd, struct map_session_data *sd)
 		return;
 	}
 
-	if(DIFF_TICK(sd->cansendmail_tick, gettick()) > 0 || pc_has_permission(sd,PC_PERM_CAN_SHOP)) {
+	if(DIFF_TICK(sd->cansendmail_tick, gettick()) > 0 || pc_has_permission(sd,PC_PERM_DISABLE_SHOP)) {
 		clif_displaymessage(sd->fd,msg_txt(675)); //"Cannot send mails too fast!!."
 		clif_Mail_send(fd, true); // fail
 		return;
@@ -15099,7 +15230,7 @@ void clif_parse_Auction_setitem(int fd, struct map_session_data *sd)
 		return;
 	}
 
-	if((item = itemdb_exists(sd->status.inventory[idx].nameid)) != NULL && !(item->type == IT_ARMOR || item->type == IT_PETARMOR || item->type == IT_WEAPON || item->type == IT_CARD || item->type == IT_ETC)) {
+	if((item = itemdb_exists(sd->status.inventory[idx].nameid)) != NULL && !(item->type == IT_ARMOR || item->type == IT_PETARMOR || item->type == IT_WEAPON || item->type == IT_CARD || item->type == IT_ETC || item->type == IT_SHADOWGEAR)) {
 		// Consumable or pets are not allowed
 		clif_Auction_setitem(sd->fd, idx, true);
 		return;
@@ -15185,7 +15316,7 @@ void clif_parse_Auction_register(int fd, struct map_session_data *sd)
 		return;
 	}
 
-	if(sd->status.zeny < (auction.hours * battle_config.auction_feeperhour) || pc_has_permission(sd,PC_PERM_CAN_SHOP)) {
+	if(sd->status.zeny < (auction.hours * battle_config.auction_feeperhour) || pc_has_permission(sd,PC_PERM_DISABLE_SHOP)) {
 		clif_Auction_message(fd, 5); // You do not have enough zeny to pay the Auction Fee.
 		return;
 	}
@@ -17801,7 +17932,7 @@ void clif_bgqueue_pcleft(struct map_session_data *sd) {
 void clif_bgqueue_battlebegins(struct map_session_data *sd, unsigned char arena_id, enum send_target target) {
 	struct packet_bgqueue_battlebegins p;
 
-	p.PacketType = bgqueue_battlebegins;
+	p.PacketType = bgqueue_battlebeginsType;
 	safestrncpy(p.bg_name, bg->arena[arena_id]->name, sizeof(p.bg_name));
 	safestrncpy(p.game_name, bg->arena[arena_id]->name, sizeof(p.game_name));
 
@@ -18000,6 +18131,15 @@ void clif_bank_withdraw(struct map_session_data *sd,enum e_BANKING_WITHDRAW_ACK 
 	p.Balance = sd->status.zeny;/* Quanto zeny char tem depois da operação */
 	p.Money = (int64)sd->status.bank_vault;/* dinheiro no banco */
 	p.Reason = (short)reason;
+
+	clif_send(&p,sizeof(p), &sd->bl, SELF);
+}
+
+void clif_notify_bounditem(struct map_session_data *sd, unsigned short index) {
+	struct packet_notify_bounditem p;
+
+	p.PacketType = notify_bounditemType;
+	p.index = index+2;
 
 	clif_send(&p,sizeof(p), &sd->bl, SELF);
 }
@@ -18357,9 +18497,12 @@ void clif_defaults(void) {
 	clif->pRanklist = clif_parse_ranklist;
 	clif->update_rankingpoint = clif_update_rankingpoint;
 	clif->ShowScript = clif_ShowScript;
+	clif->messages = clif_displaymessage_sprintf;
 	/* Sistema de Banco */
 	clif->bank_deposit = clif_bank_deposit;
 	clif->bank_withdraw = clif_bank_withdraw;
+	/* */
+	clif->notify_bounditem = clif_notify_bounditem;
 	/* Pacotes de Entrada */
 	clif->pWantToConnection = clif_parse_WantToConnection;
 	clif->pLoadEndAck = clif_parse_LoadEndAck;

@@ -440,7 +440,10 @@ int64 battle_attr_fix(struct block_list *src, struct block_list *target, int64 d
 		if(t < 5 && atk_elem == t)
 			damage -= damage * ( tsd->charm[t] * 3 ) / 100;// -3% custom value
 		}
-	return damage*ratio/100;
+	if(ratio < 100)
+		return damage - (damage * (100 - ratio) / 100);
+	else
+		return damage + (damage * (ratio - 100) / 100);
 }
 int64 battle_calc_weapon_damage(struct block_list *src, struct block_list *bl, uint16 skill_id, uint16 skill_lv, struct weapon_atk *watk, int nk, bool n_ele, short s_ele, short s_ele_, int size, int type, int flag, int flag2){ // [malufett]
 #if VERSION == 1
@@ -4705,7 +4708,7 @@ struct Damage battle_calc_weapon_attack(struct block_list *src,struct block_list
 			if(skill_id && (i = pc_skillatk_bonus(sd, skill_id)))
 				ATK_ADDRATE(i);
 #if VERSION == 1
-			if(wflag&BF_LONG)
+			if(wd.flag&BF_LONG)
 				ATK_ADDRATE(sd->bonus.long_attack_atk_rate);
 #endif
 			if((i=pc_checkskill(sd,AB_EUCHARISTICA)) > 0 &&
@@ -6465,6 +6468,8 @@ static const struct _battle_data {
 	{ "idletime_criteria",                  &battle_config.idletime_criteria,            0x1F,      1,      INT_MAX,        },
 
 	{ "mon_trans_disable_in_gvg",           &battle_config.mon_trans_disable_in_gvg,        0,      0,      1,              },
+
+	{ "emblem_transparency_limit",          &battle_config.emblem_transparency_limit,       100,     0,    100,              },
 
 	// brAthena
 	{ "devotion_rdamage",                   &battle_config.devotion_rdamage,                  0,    0,              1,      },

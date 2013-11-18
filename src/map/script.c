@@ -509,10 +509,10 @@ void script_local_casecheck_clear(void) {
 bool script_local_casecheck_add_str(const char *p, int h) {
 #ifdef ENABLE_CASE_CHECK
 	int len, i;
-	const char *s;
 	if( script->local_casecheck_str_hash[h] == 0 ) { //empty bucket, add new node here
 		script->local_casecheck_str_hash[h] = script->local_casecheck_str_num;
 	} else {
+		const char *s = NULL;
 		for( i = script->local_casecheck_str_hash[h]; ; i = script->local_casecheck_str_data[i].next ) {
 			Assert( i >= 0 && i < script->local_casecheck_str_size );
 			s = script->local_casecheck_str_buf+script->local_casecheck_str_data[i].str;
@@ -4204,6 +4204,11 @@ int do_final_script()
 	if( script->word_buf != NULL )
 		aFree(script->word_buf);
 
+	if(script->local_casecheck_str_buf)
+		aFree(script->local_casecheck_str_buf);
+	if(script->local_casecheck_str_data)
+		aFree(script->local_casecheck_str_data);
+
 	ers_destroy(script->st_ers);
 	ers_destroy(script->stack_ers);
 
@@ -6375,7 +6380,7 @@ BUILDIN_FUNC(getitem2)
 		item_data=itemdb_exists(nameid);
 		if(item_data == NULL)
 			return -1;
-		if(item_data->type==IT_WEAPON || item_data->type==IT_ARMOR) {
+		if(item_data->type==IT_WEAPON || item_data->type==IT_ARMOR || item_data->type==IT_SHADOWGEAR) {
 			if(ref > MAX_REFINE) ref = MAX_REFINE;
 		} else if(item_data->type==IT_PETEGG) {
 			iden = 1;
@@ -6388,7 +6393,7 @@ BUILDIN_FUNC(getitem2)
 		item_tmp.nameid=nameid;
 		if(!flag)
 			item_tmp.identify=iden;
-		else if(item_data->type==IT_WEAPON || item_data->type==IT_ARMOR)
+		else if(item_data->type==IT_WEAPON || item_data->type==IT_ARMOR || item_data->type==IT_SHADOWGEAR)
 			item_tmp.identify=0;
 		item_tmp.refine=ref;
 		item_tmp.attribute=attr;

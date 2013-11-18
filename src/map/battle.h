@@ -505,6 +505,7 @@ extern struct Battle_Config {
 	int feature_auction;
 
 	int mon_trans_disable_in_gvg;
+	int emblem_transparency_limit;
 } battle_config;
 
 /* criteria for battle_config.idletime_critera */
