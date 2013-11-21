@@ -42,7 +42,7 @@ enum E_MAPSERVER_ST
 
 
 #define MAX_NPC_PER_MAP 512
-#define AREA_SIZE battle_config.area_size
+#define AREA_SIZE (battle_config.area_size)
 #define DAMAGELOG_SIZE 30
 #define LOOTITEM_SIZE 10
 #define MAX_MOBSKILL 70	//Max 128, see mob skill_idx type if need this higher
@@ -55,7 +55,7 @@ enum E_MAPSERVER_ST
 #define MAX_LEVEL 175
 #define MAX_IGNORE_LIST 20 // official is 14
 #define MAX_VENDING 12
-#define MAX_MAP_SIZE 512*512 // Wasn't there something like this already? Can't find it.. [Shinryo]
+#define MAX_MAP_SIZE (512*512) // Wasn't there something like this already? Can't find it.. [Shinryo]
 
 // Added definitions for WoESE objects. [L0ne_W0lf]
 enum MOBID {
@@ -235,7 +235,7 @@ enum {
 //24 for npc name + 24 for label + 2 for a "::" and 1 for EOS
 #define EVENT_NAME_LENGTH ( NAME_LENGTH * 2 + 3 )
 
-#define DEFAULT_AUTOSAVE_INTERVAL 5*60*1000
+#define DEFAULT_AUTOSAVE_INTERVAL (5*60*1000)
 
 //Specifies maps where players may hit each other
 #define map_flag_vs(m) (map[m].flag.pvp || map[m].flag.gvg_dungeon || map[m].flag.gvg || ((agit_flag || agit2_flag) && map[m].flag.gvg_castle) || map[m].flag.battleground)
@@ -355,7 +355,7 @@ struct flooritem_data {
 	unsigned char subx,suby;
 	int cleartimer;
 	int first_get_charid,second_get_charid,third_get_charid;
-	unsigned int first_get_tick,second_get_tick,third_get_tick;
+	int64 first_get_tick,second_get_tick,third_get_tick;
 	struct item item_data;
 };
 
@@ -757,6 +757,8 @@ struct map_data_other_server {
 	uint16 port;
 };
 
+#define map_id2index(id) (map[(id)].index)
+
 int map_getcell(int16 m,int16 x,int16 y,cell_chk cellchk);
 void map_setgatcell(int16 m, int16 x, int16 y, int gat);
 
@@ -794,7 +796,7 @@ int map_freeblock_unlock(void);
 // blocklist manipulation
 int map_addblock(struct block_list* bl);
 int map_delblock(struct block_list* bl);
-int map_moveblock(struct block_list *, int, int, unsigned int);
+int map_moveblock(struct block_list *bl, int x1, int y1, int64 tick);
 int map_foreachinrange(int (*func)(struct block_list*,va_list), struct block_list* center, int16 range, int type, ...);
 int map_foreachinshootrange(int (*func)(struct block_list*,va_list), struct block_list* center, int16 range, int type, ...);
 int map_foreachinarea(int (*func)(struct block_list*,va_list), int16 m, int16 x0, int16 y0, int16 x1, int16 y1, int type, ...);
@@ -817,8 +819,8 @@ int map_quit(struct map_session_data *);
 bool map_addnpc(int16 m,struct npc_data *);
 
 // map item
-int map_clearflooritem_timer(int tid, unsigned int tick, int id, intptr_t data);
-int map_removemobs_timer(int tid, unsigned int tick, int id, intptr_t data);
+int map_clearflooritem_timer(int tid, int64 tick, int id, intptr_t data);
+int map_removemobs_timer(int tid, int64 tick, int id, intptr_t data);
 void map_clearflooritem(struct block_list* bl);
 int map_addflooritem(struct item *item_data,int amount,int16 m,int16 x,int16 y,int first_charid,int second_charid,int third_charid,int flags);
 
@@ -840,7 +842,6 @@ bool map_blid_exists( int id );
 
 struct eri *flooritem_ers;
 
-#define map_id2index(id) map[(id)].index
 int16 map_mapindex2mapid(unsigned short mapindex);
 int16 map_mapname2mapid(const char* name);
 int map_mapname2ipport(unsigned short name, uint32* ip, uint16* port);
@@ -881,11 +882,11 @@ struct block_list*      mapit_last(struct s_mapiterator* mapit);
 struct block_list*      mapit_next(struct s_mapiterator* mapit);
 struct block_list*      mapit_prev(struct s_mapiterator* mapit);
 bool                    mapit_exists(struct s_mapiterator* mapit);
-#define mapit_getallusers() mapit_alloc(MAPIT_NORMAL,BL_PC)
-#define mapit_geteachpc()   mapit_alloc(MAPIT_NORMAL,BL_PC)
-#define mapit_geteachmob()  mapit_alloc(MAPIT_NORMAL,BL_MOB)
-#define mapit_geteachnpc()  mapit_alloc(MAPIT_NORMAL,BL_NPC)
-#define mapit_geteachiddb() mapit_alloc(MAPIT_NORMAL,BL_ALL)
+#define mapit_getallusers() (mapit_alloc(MAPIT_NORMAL,BL_PC))
+#define mapit_geteachpc()   (mapit_alloc(MAPIT_NORMAL,BL_PC))
+#define mapit_geteachmob()  (mapit_alloc(MAPIT_NORMAL,BL_MOB))
+#define mapit_geteachnpc()  (mapit_alloc(MAPIT_NORMAL,BL_NPC))
+#define mapit_geteachiddb() (mapit_alloc(MAPIT_NORMAL,BL_ALL))
 
 int map_check_dir(int s_dir,int t_dir);
 uint8 map_calc_dir( struct block_list *src,int16 x,int16 y);

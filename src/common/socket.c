@@ -168,19 +168,19 @@ char *sErr(int code)
 	return sbuf;
 }
 
-#define sBind(fd,name,namelen) bind(fd2sock(fd),name,namelen)
-#define sConnect(fd,name,namelen) connect(fd2sock(fd),name,namelen)
-#define sIoctl(fd,cmd,argp) ioctlsocket(fd2sock(fd),cmd,argp)
-#define sListen(fd,backlog) listen(fd2sock(fd),backlog)
-#define sRecv(fd,buf,len,flags) recv(fd2sock(fd),buf,len,flags)
-#define sSelect select
-#define sSend(fd,buf,len,flags) send(fd2sock(fd),buf,len,flags)
-#define sSetsockopt(fd,level,optname,optval,optlen) setsockopt(fd2sock(fd),level,optname,optval,optlen)
-#define sShutdown(fd,how) shutdown(fd2sock(fd),how)
-#define sFD_SET(fd,set) FD_SET(fd2sock(fd),set)
-#define sFD_CLR(fd,set) FD_CLR(fd2sock(fd),set)
-#define sFD_ISSET(fd,set) FD_ISSET(fd2sock(fd),set)
-#define sFD_ZERO FD_ZERO
+#define sBind(fd,name,namelen)                      bind(fd2sock(fd),(name),(namelen))
+#define sConnect(fd,name,namelen)                   connect(fd2sock(fd),(name),(namelen))
+#define sIoctl(fd,cmd,argp)                         ioctlsocket(fd2sock(fd),(cmd),(argp))
+#define sListen(fd,backlog)                         listen(fd2sock(fd),(backlog))
+#define sRecv(fd,buf,len,flags)                     recv(fd2sock(fd),(buf),(len),(flags))
+#define sSelect                                     select
+#define sSend(fd,buf,len,flags)                     send(fd2sock(fd),(buf),(len),(flags))
+#define sSetsockopt(fd,level,optname,optval,optlen) setsockopt(fd2sock(fd),(level),(optname),(optval),(optlen))
+#define sShutdown(fd,how)                           shutdown(fd2sock(fd),(how))
+#define sFD_SET(fd,set)                             FD_SET(fd2sock(fd),(set))
+#define sFD_CLR(fd,set)                             FD_CLR(fd2sock(fd),(set))
+#define sFD_ISSET(fd,set)                           FD_ISSET(fd2sock(fd),(set))
+#define sFD_ZERO                                    FD_ZERO
 
 /////////////////////////////////////////////////////////////////////
 #else
@@ -897,7 +897,7 @@ int do_sockets(int next)
 typedef struct _connect_history {
 	struct _connect_history *next;
 	uint32 ip;
-	uint32 tick;
+	int64 tick;
 	int count;
 	unsigned ddos : 1;
 } ConnectHistory;
@@ -1044,7 +1044,7 @@ static int connect_check_(uint32 ip)
 
 /// Timer function.
 /// Deletes old connection history records.
-static int connect_check_clear(int tid, unsigned int tick, int id, intptr_t data)
+static int connect_check_clear(int tid, int64 tick, int id, intptr_t data)
 {
 	int i;
 	int clear = 0;

@@ -404,7 +404,7 @@ static void disp_error_message2(const char *mes,const char *pos,int report)
 	error_report = report;
 	longjmp(error_jump, 1);
 }
-#define disp_error_message(mes,pos) disp_error_message2(mes,pos,1)
+#define disp_error_message(mes,pos) (disp_error_message2((mes),(pos),1))
 
 static void disp_warning_message(const char *mes, const char *pos) {
 	script->warning(parser_current_src,parser_current_file,parser_current_line,mes,pos);
@@ -3545,7 +3545,7 @@ void script_stop_instances(struct script_code *code) {
 /*==========================================
  * Timer function for sleep
  *------------------------------------------*/
-int run_script_timer(int tid, unsigned int tick, int id, intptr_t data)
+int run_script_timer(int tid, int64 tick, int id, intptr_t data)
 {
 	struct script_state *st = idb_get(script->st_db,(int)data);
 	if(st) {
@@ -3920,7 +3920,7 @@ void script_setarray_pc(struct map_session_data *sd, const char *varname, uint8 
 int buildin_query_sql_sub(struct script_state *st, Sql *handle);
 
 /* used to receive items the queryThread has already processed */
-int queryThread_timer(int tid, unsigned int tick, int id, intptr_t data)
+int queryThread_timer(int tid, int64 tick, int id, intptr_t data)
 {
 	int i, cursor = 0;
 	bool allOk = true;
@@ -4352,8 +4352,6 @@ const char *script_getfuncname(struct script_state *st) {
 // buildin functions
 //
 
-#define BUILDIN_DEF(x,args) { buildin_ ## x , #x , args }
-#define BUILDIN_DEF2(x,x2,args) { buildin_ ## x , x2 , args }
 #define BUILDIN_FUNC(x) int buildin_ ## x (struct script_state* st)
 
 /////////////////////////////////////////////////////////////////////
@@ -8438,7 +8436,7 @@ BUILDIN_FUNC(gettimetick)   /* Asgard Version */
 		case 0:
 		default:
 			//type 0:(System Ticks)
-			script_pushint(st,gettick());
+			script_pushint(st,(int)gettick());
 			break;
 	}
 	return 0;
@@ -8718,7 +8716,7 @@ BUILDIN_FUNC(monster)
 	int class_          = script_getnum(st,6);
 	int amount          = script_getnum(st,7);
 	const char *event   = "";
-	unsigned int size   = SZ_SMALL;
+	unsigned int size   = SZ_MEDIUM;
 	unsigned int ai     = AI_NONE;
 	int mob_id;
 
@@ -8821,7 +8819,7 @@ BUILDIN_FUNC(areamonster)
 	int class_          = script_getnum(st,8);
 	int amount          = script_getnum(st,9);
 	const char *event   = "";
-	unsigned int size   = SZ_SMALL;
+	unsigned int size   = SZ_MEDIUM;
 	unsigned int ai     = AI_NONE;
 	int mob_id;
 
@@ -9261,7 +9259,7 @@ BUILDIN_FUNC(getnpctimer)
 	}
 
 	switch(type) {
-		case 0: val = npc_gettimerevent_tick(nd); break;
+		case 0: val = (int)npc_gettimerevent_tick(nd); break;
 		case 1:
 			if(nd->u.scr.rid) {
 				sd = map_id2sd(nd->u.scr.rid);
@@ -9791,8 +9789,16 @@ BUILDIN_FUNC(sc_end)
 			return 0;
 
 
-		if(status_get_sc_type(type)&SC_NO_CLEAR)
-			return 0;
+		/* status that can't be individually removed (TODO sc_config option?) */
+		switch (type) {
+			case SC_WEIGHTOVER50:
+			case SC_WEIGHTOVER90:
+			case SC_NOCHAT:
+			case SC_PUSH_CART:
+				return true;
+			default:
+				break;
+		}
 
 		//This should help status_change_end force disabling the SC in case it has no limit.
 		sce->val1 = sce->val2 = sce->val3 = sce->val4 = 0;
@@ -9863,7 +9869,7 @@ BUILDIN_FUNC(getstatus)
 
 				if(timer) {
 					// return the amount of time remaining
-					script_pushint(st, timer->tick - gettick());
+					script_pushint(st, (int)(timer->tick - gettick()));
 				}
 			}
 			break;
@@ -13204,7 +13210,7 @@ BUILDIN_FUNC(summon)
 	const char *str,*event="";
 	TBL_PC *sd;
 	struct mob_data *md;
-	int tick = gettick();
+	int64 tick = gettick();
 
 	sd=script_rid2sd(st);
 	if(!sd) return 0;
@@ -13220,7 +13226,7 @@ BUILDIN_FUNC(summon)
 
 	clif_skill_poseffect(&sd->bl,AM_CALLHOMUN,1,sd->bl.x,sd->bl.y,tick);
 
-	md = mob_once_spawn_sub(&sd->bl, sd->bl.m, sd->bl.x, sd->bl.y, str, _class, event, SZ_SMALL, AI_NONE);
+	md = mob_once_spawn_sub(&sd->bl, sd->bl.m, sd->bl.x, sd->bl.y, str, _class, event, SZ_MEDIUM, AI_NONE);
 	if(md) {
 		md->master_id=sd->bl.id;
 		md->special_state.ai = AI_ATTACK;
@@ -13266,7 +13272,7 @@ BUILDIN_FUNC(isequippedcnt)
 	}
 
 	for(i=0; id!=0; i++) {
-		FETCH(i+2, id) else id = 0;
+		script_fetch(st,i+2, id);
 		if(id <= 0)
 			continue;
 
@@ -13324,7 +13330,7 @@ BUILDIN_FUNC(isequipped)
 	setitem_hash = sd->bonus.setitem_hash;
 	setitem_hash2 = sd->bonus.setitem_hash2;
 	for(i=0; id!=0; i++) {
-		FETCH(i+2, id) else id = 0;
+		script_fetch(st,i+2, id);
 		if(id <= 0)
 			continue;
 		flag = 0;
@@ -13399,7 +13405,7 @@ BUILDIN_FUNC(cardscnt)
 	sd = script_rid2sd(st);
 
 	for(i=0; id!=0; i++) {
-		FETCH(i+2, id) else id = 0;
+		script_fetch(st,i+2, id);
 		if(id <= 0)
 			continue;
 
@@ -15064,7 +15070,7 @@ BUILDIN_FUNC(checkidle)
 		sd = script_rid2sd(st);
 
 	if (sd)
-		script_pushint(st, DIFF_TICK(last_tick, sd->idletime));
+		script_pushint(st, DIFF_TICK32(last_tick, sd->idletime));
 	else
 		script_pushint(st, 0);
 
@@ -18363,6 +18369,9 @@ BUILDIN_FUNC(deactivatepset);
 BUILDIN_FUNC(deletepset);
 #endif
 
+#define BUILDIN_DEF(x,args) { buildin_ ## x , #x , args }
+#define BUILDIN_DEF2(x,x2,args) { buildin_ ## x , x2 , args }
+
 /// script command definitions
 /// for an explanation on args, see add_buildin_func
 struct script_function buildin_func[] = {
@@ -18867,6 +18876,8 @@ struct script_function buildin_func[] = {
 	{NULL,NULL,NULL},
 	
 };
+#undef BUILDIN_DEF
+#undef BUILDIN_DEF2
 
 void script_label_add(int key, int pos) {
 	int idx = script->label_count;

@@ -23,7 +23,7 @@
 
 #define HOM_MAX_LEVEL 150 // Nível máximo ( Homunculos )
 #define MAX_HOM_SKILL_REQUIRE 5
-#define homdb_checkid(id) (id >=  HM_CLASS_BASE && id <= HM_CLASS_MAX)
+#define homdb_checkid(id) ((id) >=  HM_CLASS_BASE && (id) <= HM_CLASS_MAX)
 #define homun_alive(x) ((x) && (x)->homunculus.vaporize == HOM_ST_ACTIVE && (x)->battle_status.hp > 0)
 
 struct h_stats {
@@ -132,7 +132,7 @@ struct homunculus_interface {
 	void (*save) (struct homun_data *hd);
 	unsigned char (*menu) (struct map_session_data *sd,unsigned char menu_num);
 	bool (*feed) (struct map_session_data *sd, struct homun_data *hd);
-	int (*hunger_timer) (int tid, unsigned int tick, int id, intptr_t data);
+	int (*hunger_timer) (int tid, int64 tick, int id, intptr_t data);
 	void (*hunger_timer_delete) (struct homun_data *hd);
 	int (*change_name) (struct map_session_data *sd,char *name);
 	bool (*change_name_ack) (struct map_session_data *sd, char* name, int flag);
