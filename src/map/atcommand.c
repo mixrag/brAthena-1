@@ -1149,7 +1149,7 @@ ACMD_FUNC(heal)
 
 	if(hp < 0 && sp <= 0) {
 		status_damage(NULL, &sd->bl, -hp, -sp, 0, 0);
-		clif_damage(&sd->bl,&sd->bl, gettick(), 0, 0, -hp, 0, 4, 0);
+		clif_damage(&sd->bl,&sd->bl, 0, 0, -hp, 0, 4, 0);
 		clif_displaymessage(fd, msg_txt(156)); // HP or/and SP modified.
 		return 0;
 	}
@@ -1160,7 +1160,7 @@ ACMD_FUNC(heal)
 			status_heal(&sd->bl, hp, 0, 0);
 		else {
 			status_damage(NULL, &sd->bl, -hp, 0, 0, 0);
-			clif_damage(&sd->bl,&sd->bl, gettick(), 0, 0, -hp, 0, 4, 0);
+			clif_damage(&sd->bl,&sd->bl, 0, 0, -hp, 0, 4, 0);
 		}
 	}
 
@@ -1213,9 +1213,28 @@ ACMD_FUNC(item)
 		return -1;
 	}
 
-		if(!strcmpi(command+1,"itembound") && !(bound >= IBT_MIN && bound <= IBT_MAX)) {
-		clif_displaymessage(fd, msg_txt(298)); // Invalid bound type
-		return -1;
+		if(!strcmpi(command+1,"itembound")) {
+			if(!(bound >= IBT_MIN && bound <= IBT_MAX)) {
+			clif_displaymessage(fd, msg_txt(298)); // Invalid bound type
+			return -1;
+		}
+		switch((enum e_item_bound_type)bound) {
+			case IBT_CHARACTER:
+			case IBT_ACCOUNT:
+				break; /* no restrictions */
+			case IBT_PARTY:
+				if(!sd->status.party_id) {
+					clif_displaymessage(fd, msg_txt(1500)); //You can't add a party bound item to a character without party!
+					return -1;
+				}
+				break;
+			case IBT_GUILD:
+				if(!sd->status.guild_id) {
+					clif_displaymessage(fd, msg_txt(1501)); //You can't add a guild bound item to a character without guild!
+					return -1;
+				}
+				break;
+		}
 	}
 
 	item_id = item_data->nameid;
@@ -2042,11 +2061,6 @@ ACMD_FUNC(monster)
 		return -1;
 	}
 
-	if(mob_id == MOBID_EMPERIUM) {
-		clif_displaymessage(fd, msg_txt(83)); // Monster 'Emperium' cannot be spawned.
-		return -1;
-	}
-
 	if(number <= 0)
 		number = 1;
 
@@ -2071,7 +2085,7 @@ ACMD_FUNC(monster)
 	range = (int)sqrt((float)number) +2; // calculation of an odd number (+ 4 area around)
 	for(i = 0; i < number; i++) {
 		map_search_freecell(&sd->bl, 0, &mx,  &my, range, range, 0);
-		k = mob_once_spawn(sd, sd->bl.m, mx, my, name, mob_id, 1, eventname, size, AI_NONE);
+		k = mob_once_spawn(sd, sd->bl.m, mx, my, name, mob_id, 1, eventname, size, AI_NONE|(mob_id == MOBID_EMPERIUM?0x200:0x0));
 		count += (k != 0) ? 1 : 0;
 	}
 
@@ -2176,9 +2190,10 @@ ACMD_FUNC(refine)
 	refine = cap_value(refine, -MAX_REFINE, MAX_REFINE);
 
 	count = 0;
-	for(j = 0; j < EQI_MAX-1; j++) {
+	for(j = 0; j < EQI_MAX; j++) {
 		if((i = sd->equip_index[j]) < 0)
 			continue;
+		if(j == EQI_AMMO) continue; /* can't equip ammo */
 		if(j == EQI_HAND_R && sd->equip_index[EQI_HAND_L] == i)
 			continue;
 		if(j == EQI_HEAD_MID && sd->equip_index[EQI_HEAD_LOW] == i)
@@ -3684,7 +3699,7 @@ ACMD_FUNC(reload)
 		case 3: status_readdb(); break;
 		case 4: pc_readdb(); break;
 		case 5: pc_groups_reload(); break;
-		case 6: do_reload_quest(); break;
+		case 6: quest->reload(); break;
 		case 7: homun->reload(); break;
 		case 8: read_petdb(); break;
 		case 9: pc_read_motd(); break;
@@ -7122,8 +7137,10 @@ ACMD_FUNC(makehomun)
 
 	homunid = atoi(message);
 
-	if(homunid == -1 && sd->status.hom_id && !homun_alive(sd->hd)) {
-		if(sd->hd->homunculus.vaporize )
+	if(homunid == -1 && sd->status.hom_id && !(sd->hd &&homun_alive(sd->hd))) {
+		if(!sd->hd)
+			homun->call(sd);
+		else if(sd->hd->homunculus.vaporize )
 			homun->ressurect(sd, 100, sd->bl.x, sd->bl.y);
 		else
 			homun->call(sd);
@@ -8956,7 +8973,7 @@ ACMD_FUNC(cart)
 
 /* Channel System [Ind] */
 ACMD_FUNC(join) {
-	struct raChSysCh *channel;
+	struct raChSysCh *channel = NULL;
 	char name[RACHSYS_NAME_LENGTH], pass[RACHSYS_NAME_LENGTH];
 	DBMap* channel_db = clif_get_channel_db();
 	
@@ -8968,6 +8985,7 @@ ACMD_FUNC(join) {
 	if( raChSys.local && strcmpi(name + 1, raChSys.local_name) == 0 ) {
 		if( !map[sd->bl.m].channel ) {
 			clif_chsys_mjoin(sd);
+			if(map[sd->bl.m].channel) /* mjoin might have refused, map has chatting capabilities disabled */
 			return 0;
 		} else
 			channel = map[sd->bl.m].channel;
@@ -8980,6 +8998,13 @@ ACMD_FUNC(join) {
 		clif_displaymessage(fd, atcmd_output);
 		return -1;
 	}
+
+	if(!channel) {
+		sprintf(atcmd_output, msg_txt(1403),name,command); // Unknown Channel '%s' (usage: %s <#channel_name>)
+		clif_displaymessage(fd, atcmd_output);
+		return -1;
+	}
+
 
 	if( idb_exists(channel->users, sd->status.char_id) ) {
 		sprintf(atcmd_output, msg_txt(1437),name); // You're already in the '%s' channel.
@@ -9018,9 +9043,8 @@ ACMD_FUNC(join) {
 			}
 		}
 	}
-
-
 	clif_chsys_join(channel,sd);
+
 	return 0;
 }
 

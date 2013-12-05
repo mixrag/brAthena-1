@@ -106,35 +106,35 @@ static struct {
 int mobdb_searchname(const char *str)
 {
 	int i;
-	struct mob_db *mob;
+	struct mob_db *monster;
 	for(i=0; i<=MAX_MOB_DB; i++) {
-		mob = mob_db(i);
-		if(mob == mob_dummy) //Skip dummy mobs.
+		monster = mob_db(i);
+		if(monster == mob_dummy) //Skip dummy mobs.
 			continue;
-		if(strcmpi(mob->name,str)==0 || strcmpi(mob->jname,str)==0 || strcmpi(mob->sprite,str)==0)
+		if(strcmpi(monster->name,str)==0 || strcmpi(monster->jname,str)==0 || strcmp(monster->sprite,str)==0) // Sprite name case sensitive
 			return i;
 	}
 
 	return 0;
 }
-static int mobdb_searchname_array_sub(struct mob_db *mob, const char *str, int flag)
+static int mobdb_searchname_array_sub(struct mob_db *monster, const char *str, int flag)
 {
-	if(mob == mob_dummy)
+	if(monster == mob_dummy)
 		return 1;
-	if(!mob->base_exp && !mob->job_exp && mob->spawn[0].qty < 1)
+	if(!monster->base_exp && !monster->job_exp && monster->spawn[0].qty < 1)
 		return 1; // Monsters with no base/job exp and no spawn point are, by this criteria, considered "slave mobs" and excluded from search results
 	if(!flag) {
-		if(stristr(mob->jname,str))
+		if(stristr(monster->jname,str))
 			return 0;
-		if(stristr(mob->name,str))
+		if(stristr(monster->name,str))
 			return 0;
-		return strcmpi(mob->jname,str);
+		return strcmpi(monster->jname,str);
 	}
-	if(strcmp(mob->jname,str) == 0)
+	if(strcmpi(monster->jname,str) == 0)
 		return 0;
-	if(strcmp(mob->name,str) == 0)
+	if(strcmpi(monster->name,str) == 0)
 		return 0;
-	return strcmp(mob->sprite,str);
+	return strcmp(monster->sprite,str);
 }
 
 /*==========================================
@@ -212,14 +212,14 @@ void mvptomb_destroy(struct mob_data *md)
 int mobdb_searchname_array(struct mob_db **data, int size, const char *str, int flag)
 {
 	int count = 0, i;
-	struct mob_db *mob;
+	struct mob_db *monster;
 	for(i=0; i<=MAX_MOB_DB; i++) {
-		mob = mob_db(i);
-		if(mob == mob_dummy || mob_is_clone(i))   //keep clones out (or you leak player stats)
+		monster = mob_db(i);
+		if(monster == mob_dummy || mob_is_clone(i))   //keep clones out (or you leak player stats)
 			continue;
-		if(!mobdb_searchname_array_sub(mob, str, flag)) {
+		if(!mobdb_searchname_array_sub(monster, str, flag)) {
 			if(count < size)
-				data[count] = mob;
+				data[count] = monster;
 			count++;
 		}
 	}
@@ -472,6 +472,12 @@ struct mob_data *mob_once_spawn_sub(struct block_list *bl, int16 m, int16 x, int
 int mob_once_spawn(struct map_session_data *sd, int16 m, int16 x, int16 y, const char *mobname, int class_, int amount, const char *event, unsigned int size, unsigned int ai) {
 	struct mob_data *md = NULL;
 	int count, lv;
+	bool no_guardian_data = false;
+
+	if(ai && ai&0x200) {
+		no_guardian_data = true;
+		ai &=~ 0x200;
+	}
 
 	if(m < 0 || amount <= 0)
 		return 0; // invalid input
@@ -485,7 +491,7 @@ int mob_once_spawn(struct map_session_data *sd, int16 m, int16 x, int16 y, const
 		if(!md)
 			continue;
 
-		if(class_ == MOBID_EMPERIUM) {
+		if(class_ == MOBID_EMPERIUM && !no_guardian_data) {
 			struct guild_castle *gc = guild_mapindex2gc(map_id2index(m));
 			struct guild *g = (gc) ? guild_search(gc->guild_id) : NULL;
 			if(gc) {
@@ -592,7 +598,7 @@ int mob_spawn_guardian_sub(int tid, int64 tick, int id, intptr_t data)
 	if(g == NULL) {
 		//Liberate castle, if the guild is not found this is an error! [Skotlex]
 		ShowError("mob_spawn_guardian_sub: Couldn't load guild %d!\n", (int)data);
-		if(md->class_ == MOBID_EMPERIUM) {
+		if(md->class_ == MOBID_EMPERIUM  && md->guardian_data) {
 			//Not sure this is the best way, but otherwise we'd be invoking this for ALL guardians spawned later on.
 			md->guardian_data->guild_id = 0;
 			if(md->guardian_data->castle->guild_id) { //Free castle up.
@@ -1041,7 +1047,7 @@ static int mob_ai_sub_hard_activesearch(struct block_list *bl,va_list ap)
 	mode= va_arg(ap,int);
 
 	//If can't seek yet, not an enemy, or you can't attack it, skip.
-	if((*target) == bl || !status_check_skilluse(&md->bl, bl, 0, 0))
+	if(md->bl.id == bl->id || (*target) == bl || !status_check_skilluse(&md->bl, bl, 0, 0))
 		return 0;
 
 	if((mode&MD_TARGETWEAK) && status_get_lv(bl) >= md->level-5)
@@ -1099,9 +1105,10 @@ static int mob_ai_sub_hard_changechase(struct block_list *bl,va_list ap)
 	target= va_arg(ap,struct block_list **);
 
 	//If can't seek yet, not an enemy, or you can't attack it, skip.
-	if((*target) == bl ||
-	   battle_check_target(&md->bl,bl,BCT_ENEMY)<=0 ||
-	   !status_check_skilluse(&md->bl, bl, 0, 0))
+	if(md->bl.id == bl->id || *target == bl
+	 || battle_check_target(&md->bl,bl,BCT_ENEMY) <= 0
+	 || !status_check_skilluse(&md->bl, bl, 0, 0))
+
 		return 0;
 
 	if(battle_check_range(&md->bl, bl, md->status.rhw.range)) {
@@ -2350,6 +2357,14 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 				//MSG: "'%s' won %s's %s (chance: %0.02f%%)"
 				intif_broadcast(message,strlen(message)+1, BC_DEFAULT);
 			}
+
+			/* heres the thing we got the feature set up however we're still discussing how to best define the ids,
+			 * so while we discuss, for a small period of time, the list is hardcoded (yes officially only those 2 use it,
+			 * thus why we're unsure on how to best place the setting) */
+			/* temp, will not be hardcoded for long thudu. */
+			if(it->nameid == 7782 || it->nameid == 7783) /* for when not hardcoded: add a check on mvp bonus drop as well */
+				clif->item_drop_announce(mvp_sd, it->nameid, md->name);
+
 			// Announce first, or else ditem will be freed. [Lance]
 			// By popular demand, use base drop rate for autoloot code. [Skotlex]
 			mob_item_drop(md, dlist, ditem, 0, md->db->dropitem[i].p, homkillonly);
@@ -2422,7 +2437,6 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 	if(mvp_sd && md->db->mexp > 0 && !md->special_state.ai) {
 		int log_mvp[2] = {0};
 		unsigned int mexp;
-		struct item item;
 		double exp;
 
 		//mapflag: noexp check [Lorky]
@@ -2445,6 +2459,7 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 			/* pose them randomly in the list -- so on 100% drop servers it wont always drop the same item */
 			int mdrop_id[MAX_MVP_DROP];
 			int mdrop_p[MAX_MVP_DROP];
+			struct item item;
 
 			memset(&mdrop_id,0,MAX_MVP_DROP*sizeof(int));
 
@@ -2502,7 +2517,7 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 		log_mvpdrop(mvp_sd, md->class_, log_mvp);
 	}
 
-	if(type&2 && !sd && md->class_ == MOBID_EMPERIUM)
+	if(type&2 && !sd && md->class_ == MOBID_EMPERIUM && md->guardian_data)
 		//Emperium destroyed by script. Discard mvp character. [Skotlex]
 		mvp_sd = NULL;
 
@@ -2531,9 +2546,9 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 			}
 
 			if(sd->status.party_id)
-				map_foreachinrange(quest_update_objective_sub,&md->bl,AREA_SIZE,BL_PC,sd->status.party_id,md->class_);
+				map_foreachinrange(quest->update_objective_sub,&md->bl,AREA_SIZE,BL_PC,sd->status.party_id,md->class_);
 			else if(sd->avail_quests)
-				quest_update_objective(sd, md->class_);
+				quest->update_objective(sd, md->class_);
 
 			if(sd->md && src && src->type != BL_HOM && mob_db(md->class_)->lv > sd->status.base_level/2)
 				mercenary_kills(sd->md);
@@ -2720,7 +2735,7 @@ int mob_class_change(struct mob_data *md, int class_)
 	mob_stop_walking(md, 0);
 	unit_skillcastcancel(&md->bl, 0);
 	status_set_viewdata(&md->bl, class_);
-	clif_mob_class_change(md,md->vd->class_);
+	clif_class_change(&md->bl,md->vd->class_,1);
 	status_calc_mob(md, SCO_FIRST);
 	md->ud.state.speed_changed = 1; //Speed change update.
 
@@ -2754,6 +2769,19 @@ void mob_heal(struct mob_data *md,unsigned int heal)
 {
 	if(battle_config.show_mob_info&3)
 		clif_charnameack(0, &md->bl);
+
+#if PACKETVER >= 20120404
+	if(!(md->status.mode&MD_BOSS)){
+		int i;
+		for(i = 0; i < DAMAGELOG_SIZE; i++){ // must show hp bar to all char who already hit the mob.
+			if(md->dmglog[i].id) {
+				struct map_session_data *sd = map_charid2sd(md->dmglog[i].id);
+				if(sd && check_distance_bl(&md->bl, &sd->bl, AREA_SIZE)) // check if in range
+					clif_monster_hp_bar(md,sd);
+			}
+		}
+	}
+#endif
 }
 
 /*==========================================

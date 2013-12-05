@@ -196,47 +196,52 @@ struct {
 const char *parse_subexpr(const char *p,int limit);
 int run_func(struct script_state *st);
 
-const char *script_op2name(int op)
-{
+const char* script_op2name(int op) {
 #define RETURN_OP_NAME(type) case type: return #type
 	switch(op) {
-			RETURN_OP_NAME(C_NOP);
-			RETURN_OP_NAME(C_POS);
-			RETURN_OP_NAME(C_INT);
-			RETURN_OP_NAME(C_PARAM);
-			RETURN_OP_NAME(C_FUNC);
-			RETURN_OP_NAME(C_STR);
-			RETURN_OP_NAME(C_CONSTSTR);
-			RETURN_OP_NAME(C_ARG);
-			RETURN_OP_NAME(C_NAME);
-			RETURN_OP_NAME(C_EOL);
-			RETURN_OP_NAME(C_RETINFO);
-			RETURN_OP_NAME(C_USERFUNC);
-			RETURN_OP_NAME(C_USERFUNC_POS);
+	RETURN_OP_NAME(C_NOP);
+	RETURN_OP_NAME(C_POS);
+	RETURN_OP_NAME(C_INT);
+	RETURN_OP_NAME(C_PARAM);
+	RETURN_OP_NAME(C_FUNC);
+	RETURN_OP_NAME(C_STR);
+	RETURN_OP_NAME(C_CONSTSTR);
+	RETURN_OP_NAME(C_ARG);
+	RETURN_OP_NAME(C_NAME);
+	RETURN_OP_NAME(C_EOL);
+	RETURN_OP_NAME(C_RETINFO);
+	RETURN_OP_NAME(C_USERFUNC);
+	RETURN_OP_NAME(C_USERFUNC_POS);
 
-			// operators
-			RETURN_OP_NAME(C_OP3);
-			RETURN_OP_NAME(C_LOR);
-			RETURN_OP_NAME(C_LAND);
-			RETURN_OP_NAME(C_LE);
-			RETURN_OP_NAME(C_LT);
-			RETURN_OP_NAME(C_GE);
-			RETURN_OP_NAME(C_GT);
-			RETURN_OP_NAME(C_EQ);
-			RETURN_OP_NAME(C_NE);
-			RETURN_OP_NAME(C_XOR);
-			RETURN_OP_NAME(C_OR);
-			RETURN_OP_NAME(C_AND);
-			RETURN_OP_NAME(C_ADD);
-			RETURN_OP_NAME(C_SUB);
-			RETURN_OP_NAME(C_MUL);
-			RETURN_OP_NAME(C_DIV);
-			RETURN_OP_NAME(C_MOD);
-			RETURN_OP_NAME(C_NEG);
-			RETURN_OP_NAME(C_LNOT);
-			RETURN_OP_NAME(C_NOT);
-			RETURN_OP_NAME(C_R_SHIFT);
-			RETURN_OP_NAME(C_L_SHIFT);
+	RETURN_OP_NAME(C_REF);
+
+	// operators
+	RETURN_OP_NAME(C_OP3);
+	RETURN_OP_NAME(C_LOR);
+	RETURN_OP_NAME(C_LAND);
+	RETURN_OP_NAME(C_LE);
+	RETURN_OP_NAME(C_LT);
+	RETURN_OP_NAME(C_GE);
+	RETURN_OP_NAME(C_GT);
+	RETURN_OP_NAME(C_EQ);
+	RETURN_OP_NAME(C_NE);
+	RETURN_OP_NAME(C_XOR);
+	RETURN_OP_NAME(C_OR);
+	RETURN_OP_NAME(C_AND);
+	RETURN_OP_NAME(C_ADD);
+	RETURN_OP_NAME(C_SUB);
+	RETURN_OP_NAME(C_MUL);
+	RETURN_OP_NAME(C_DIV);
+	RETURN_OP_NAME(C_MOD);
+	RETURN_OP_NAME(C_NEG);
+	RETURN_OP_NAME(C_LNOT);
+	RETURN_OP_NAME(C_NOT);
+	RETURN_OP_NAME(C_R_SHIFT);
+	RETURN_OP_NAME(C_L_SHIFT);
+	RETURN_OP_NAME(C_ADD_POST);
+	RETURN_OP_NAME(C_SUB_POST);
+	RETURN_OP_NAME(C_ADD_PRE);
+	RETURN_OP_NAME(C_SUB_PRE);
 
 		default:
 			ShowDebug("script_op2name: inesperado op=%d\n", op);
@@ -428,8 +433,43 @@ static unsigned int calc_hash(const char *p)
 
 #if defined(SCRIPT_HASH_DJB2)
 	h = 5381;
-	while(*p)   // hash*33 + c
-		h = (h << 5) + h + ((unsigned char)TOLOWER(*p++));
+	while( *p ) // hash*33 + c
+		h = ( h << 5 ) + h + ((unsigned char)(*p++));
+#elif defined(SCRIPT_HASH_SDBM)
+	h = 0;
+	while( *p ) // hash*65599 + c
+		h = ( h << 6 ) + ( h << 16 ) - h + ((unsigned char)(*p++));
+#elif defined(SCRIPT_HASH_ELF) // UNIX ELF hash
+	h = 0;
+	while( *p ) {
+		unsigned int g;
+		h = ( h << 4 ) + ((unsigned char)(*p++));
+		g = h & 0xF0000000;
+		if( g ) {
+			h ^= g >> 24;
+			h &= ~g;
+		}
+	}
+#else // athena hash
+	h = 0;
+	while( *p )
+		h = ( h << 1 ) + ( h >> 3 ) + ( h >> 5 ) + ( h >> 8 ) + (unsigned char)(*p++);
+#endif
+
+	return h % SCRIPT_HASH_SIZE;
+}
+
+/*==========================================
+ * Hashes the input string in a case insensitive way
+ *------------------------------------------*/
+unsigned int calc_hash_ci(const char* p) {
+	unsigned int h = 0;
+#ifdef ENABLE_CASE_CHECK
+
+#if defined(SCRIPT_HASH_DJB2)
+	h = 5381;
+	while( *p ) // hash*33 + c
+		h = ( h << 5 ) + h + ((unsigned char)TOLOWER(*p++));
 #elif defined(SCRIPT_HASH_SDBM)
 	h = 0;
 	while(*p)   // hash*65599 + c
@@ -451,6 +491,7 @@ static unsigned int calc_hash(const char *p)
 		h = (h << 1) + (h >> 3) + (h >> 5) + (h >> 8) + (unsigned char)TOLOWER(*p++);
 #endif
 
+#endif
 	return h % SCRIPT_HASH_SIZE;
 }
 
@@ -472,15 +513,7 @@ static int search_str(const char *p)
 	int i;
 
 	for(i = str_hash[calc_hash(p)]; i != 0; i = str_data[i].next) {
-		if(strcasecmp(get_str(i),p) == 0) {
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, ".@", 2) != 0 // Local scope vars are checked separately to decrease false positives
-					&& strcasecmp(p, "disguise") != 0 && strcasecmp(p, "Poison_Spore") != 0
-					&& strcasecmp(p, "PecoPeco_Egg") != 0 && strcasecmp(p, "Soccer_Ball") != 0
-					&& strcasecmp(p, "Horn") != 0 && strcasecmp(p, "Treasure_Box_") != 0
-					&& strcasecmp(p, "Lord_of_Death") != 0
-					&& strcmp(get_str(i),p) != 0 ) DeprecationWarning2("script_search_str", p, get_str(i), parser_current_file); // TODO
-#endif
+		if(strcmp(get_str(i),p) == 0) {
 			return i;
 		}
 	}
@@ -488,109 +521,108 @@ static int search_str(const char *p)
 	return -1;
 }
 
-void script_local_casecheck_clear(void) {
+void script_casecheck_clear_sub(struct casecheck_data *ccd) {
 #ifdef ENABLE_CASE_CHECK
-	if (script->local_casecheck_str_data) {
-		aFree(script->local_casecheck_str_data);
-		script->local_casecheck_str_data = NULL;
+	if (ccd->str_data) {
+		aFree(ccd->str_data);
+		ccd->str_data = NULL;
 	}
-	script->local_casecheck_str_data_size = 0;
-	script->local_casecheck_str_num = 1;
-	if (script->local_casecheck_str_buf) {
-		aFree(script->local_casecheck_str_buf);
-		script->local_casecheck_str_buf = NULL;
+	ccd->str_data_size = 0;
+	ccd->str_num = 1;
+	if (ccd->str_buf) {
+		aFree(ccd->str_buf);
+		ccd->str_buf = NULL;
 	}
-	script->local_casecheck_str_pos = 0;
-	script->local_casecheck_str_size = 0;
-	memset(script->local_casecheck_str_hash, 0, sizeof(script->local_casecheck_str_hash));
+	ccd->str_pos = 0;
+	ccd->str_size = 0;
+	memset(ccd->str_hash, 0, sizeof(ccd->str_hash));
 #endif
 }
 
-bool script_local_casecheck_add_str(const char *p, int h) {
+void script_global_casecheck_clear(void) {
+	script_casecheck_clear_sub(&script->global_casecheck);
+}
+
+void script_local_casecheck_clear(void) {
+	script_casecheck_clear_sub(&script->local_casecheck);
+}
+
+const char *script_casecheck_add_str_sub(struct casecheck_data *ccd, const char *p) {
 #ifdef ENABLE_CASE_CHECK
 	int len, i;
-	if( script->local_casecheck_str_hash[h] == 0 ) { //empty bucket, add new node here
-		script->local_casecheck_str_hash[h] = script->local_casecheck_str_num;
+	int h = script->calc_hash_ci(p);
+	if(ccd->str_hash[h] == 0) { //empty bucket, add new node here
+		ccd->str_hash[h] = ccd->str_num;
 	} else {
 		const char *s = NULL;
-		for( i = script->local_casecheck_str_hash[h]; ; i = script->local_casecheck_str_data[i].next ) {
-			Assert( i >= 0 && i < script->local_casecheck_str_size );
-			s = script->local_casecheck_str_buf+script->local_casecheck_str_data[i].str;
+		for(i = ccd->str_hash[h]; ; i = ccd->str_data[i].next) {
+			Assert(i >= 0 && i < ccd->str_size);
+			s = ccd->str_buf+ccd->str_data[i].str;
 			if( strcasecmp(s,p) == 0 ) {
-				if ( strcmp(s,p) != 0 ) {
-					DeprecationWarning2("script_add_str", p, s, parser_current_file);
-					return true;
-				}
-				return false; // string already in list
+				return s; // string already in list
 			}
-			if( script->local_casecheck_str_data[i].next == 0 )
+			if(ccd->str_data[i].next == 0)
 				break; // reached the end
 		}
 
 		// append node to end of list
-		script->local_casecheck_str_data[i].next = script->local_casecheck_str_num;
+		ccd->str_data[i].next = ccd->str_num;
 	}
 
 	// grow list if neccessary
-	if( script->local_casecheck_str_num >= script->local_casecheck_str_data_size ) {
-		script->local_casecheck_str_data_size += 1280;
-		RECREATE(script->local_casecheck_str_data,struct str_data_struct,script->local_casecheck_str_data_size);
-		memset(script->local_casecheck_str_data + (script->local_casecheck_str_data_size - 1280), '\0', 1280);
+	if(ccd->str_num >= ccd->str_data_size) {
+		ccd->str_data_size += 1280;
+		RECREATE(ccd->str_data,struct str_data_struct,ccd->str_data_size);
+		memset(ccd->str_data + (ccd->str_data_size - 1280), '\0', 1280);
 	}
 
 	len=(int)strlen(p);
 
 	// grow string buffer if neccessary
-	while( script->local_casecheck_str_pos+len+1 >= script->local_casecheck_str_size ) {
-		script->local_casecheck_str_size += 10240;
-		RECREATE(script->local_casecheck_str_buf,char,script->local_casecheck_str_size);
-		memset(script->local_casecheck_str_buf + (script->local_casecheck_str_size - 10240), '\0', 10240);
+	while(ccd->str_pos+len+1 >= ccd->str_size) {
+		ccd->str_size += 10240;
+		RECREATE(ccd->str_buf,char,ccd->str_size);
+		memset(ccd->str_buf + (ccd->str_size - 10240), '\0', 10240);
 	}
 
-	safestrncpy(script->local_casecheck_str_buf+script->local_casecheck_str_pos, p, len+1);
-	script->local_casecheck_str_data[script->local_casecheck_str_num].type = C_NOP;
-	script->local_casecheck_str_data[script->local_casecheck_str_num].str = script->local_casecheck_str_pos;
-	script->local_casecheck_str_data[script->local_casecheck_str_num].val = 0;
-	script->local_casecheck_str_data[script->local_casecheck_str_num].next = 0;
-	script->local_casecheck_str_data[script->local_casecheck_str_num].func = NULL;
-	script->local_casecheck_str_data[script->local_casecheck_str_num].backpatch = -1;
-	script->local_casecheck_str_data[script->local_casecheck_str_num].label = -1;
-	script->local_casecheck_str_pos += len+1;
+	safestrncpy(ccd->str_buf+ccd->str_pos, p, len+1);
+	ccd->str_data[ccd->str_num].type = C_NOP;
+	ccd->str_data[ccd->str_num].str = ccd->str_pos;
+	ccd->str_data[ccd->str_num].val = 0;
+	ccd->str_data[ccd->str_num].next = 0;
+	ccd->str_data[ccd->str_num].func = NULL;
+	ccd->str_data[ccd->str_num].backpatch = -1;
+	ccd->str_data[ccd->str_num].label = -1;
+	ccd->str_pos += len+1;
 
-	script->local_casecheck_str_num++;
+	ccd->str_num++;
 #endif
-	return false;
+	return NULL;
+}
+
+const char *script_global_casecheck_add_str(const char *p) {
+	return script_casecheck_add_str_sub(&script->global_casecheck, p);
+}
+
+const char *script_local_casecheck_add_str(const char *p) {
+	return script_casecheck_add_str_sub(&script->local_casecheck, p);
 }
 
 /// Stores a copy of the string and returns its id.
 /// If an identical string is already present, returns its id instead.
 int add_str(const char *p)
 {
-	int i, h;
-	int len;
-
-	h = calc_hash(p);
+	int i, len, h = calc_hash(p);
 
 #ifdef ENABLE_CASE_CHECK
-	if((strncmp(p, ".@", 2) == 0) ) // Local scope vars are checked separately to decrease false positives
-		script->local_casecheck_add_str(p, h);
+	const char *existingentry = NULL;
 #endif
 
-	if(str_hash[h] == 0) {
-		// empty bucket, add new node here
+	if(str_hash[h] == 0 ) {// empty bucket, add new node here
 		str_hash[h] = str_num;
-	} else {
-		// scan for end of list, or occurence of identical string
+	} else {// scan for end of list, or occurence of identical string
 		for(i = str_hash[h]; ; i = str_data[i].next) {
-			if(strcasecmp(get_str(i),p) == 0) {
-#ifdef ENABLE_CASE_CHECK
-				if((strncmp(p, ".@", 2) != 0) // Local scope vars are checked separately to decrease false positives
-						&& strcasecmp(p, "disguise") != 0 && strcasecmp(p, "Poison_Spore") != 0
-						&& strcasecmp(p, "PecoPeco_Egg") != 0 && strcasecmp(p, "Soccer_Ball") != 0
-						&& strcasecmp(p, "Horn") != 0 && strcasecmp(p, "Treasure_Box_") != 0
-						&& strcasecmp(p, "Lord_of_Death") != 0
-						&& strcmp(get_str(i),p) != 0 ) DeprecationWarning2("script_add_str", p, get_str(i), parser_current_file); // TODO
-#endif
+			if(strcmp(get_str(i),p) == 0) {
 				return i; // string already in list
 			}
 			if(str_data[i].next == 0)
@@ -600,6 +632,25 @@ int add_str(const char *p)
 		// append node to end of list
 		str_data[i].next = str_num;
 	}
+
+#ifdef ENABLE_CASE_CHECK
+	if((strncmp(p, ".@", 2) == 0)) // Local scope vars are checked separately to decrease false positives
+		existingentry = script->local_casecheck.add_str(p);
+	else {
+		existingentry = script->global_casecheck.add_str(p);
+		if(existingentry) {
+			if( strcasecmp(p, "disguise") == 0 || strcasecmp(p, "Poison_Spore") == 0
+				|| strcasecmp(p, "PecoPeco_Egg") == 0 || strcasecmp(p, "Soccer_Ball") == 0
+				|| strcasecmp(p, "Horn") == 0 || strcasecmp(p, "Treasure_Box_") == 0
+				|| strcasecmp(p, "Lord_of_Death") == 0
+			  ) // Known duplicates, don't bother warning the user
+				existingentry = NULL;
+		}
+	}
+	if(existingentry) {
+		DeprecationWarning2("script_add_str", p, existingentry, parser_current_file); // TODO
+	}
+#endif
 
 	// grow list if neccessary
 	if(str_num >= str_data_size) {
@@ -942,6 +993,38 @@ static void parse_nextline(bool first, const char *p)
 	str_data[LABEL_NEXTLINE].label     = -1;
 }
 
+/**
+ * Pushes a variable into stack, processing its array index if needed.
+ * @see parse_variable
+ */
+void parse_variable_sub_push(int word, const char *p2) {
+	const char* p3 = NULL;
+
+	if(p2) {
+		// process the variable index
+
+		// push the getelementofarray method into the stack
+		add_scriptl(buildin_getelementofarray_ref);
+		add_scriptc(C_ARG);
+		add_scriptl(word);
+
+		// process the sub-expression for this assignment
+		p3 = parse_subexpr(p2 + 1, 1);
+		p3 = skip_space(p3);
+
+		if(*p3 != ']') {// closing parenthesis is required for this script
+			disp_error_message("Missing closing ']' parenthesis for the variable assignment.", p3);
+		}
+
+		// push the closing function stack operator onto the stack
+		add_scriptc(C_FUNC);
+		p3++;
+	} else {
+		// No array index, simply push the variable or value onto the stack
+		add_scriptl(word);
+	}
+}
+
 /// Parse a variable assignment using the direct equals operator
 /// @param p script position where the function should run from
 /// @return NULL if not a variable assignment, the new position otherwise
@@ -951,6 +1034,12 @@ const char *parse_variable(const char *p)
 	c_op type = C_NOP;
 	const char *p2 = NULL;
 	const char *var = p;
+
+	if((p[0] == '+' && p[1] == '+' && (type = C_ADD_PRE)) // pre ++
+	 || (p[1] == '-' && p[1] == '-' && (type = C_SUB_PRE)) // pre --
+	) {
+		var = p = skip_space(&p[2]);
+	}
 
 	// skip the variable where applicable
 	p = skip_word(p);
@@ -981,9 +1070,8 @@ const char *parse_variable(const char *p)
 	     || (p[0] == '*' && p[1] == '=' && (type = C_MUL))   // *=
 	     || (p[0] == '/' && p[1] == '=' && (type = C_DIV))   // /=
 	     || (p[0] == '%' && p[1] == '=' && (type = C_MOD))   // %=
-	     || (p[0] == '~' && p[1] == '=' && (type = C_NOT))   // ~=
-	     || (p[0] == '+' && p[1] == '+' && (type = C_ADD_PP))   // ++
-	     || (p[0] == '-' && p[1] == '-' && (type = C_SUB_PP))   // --
+	     || (p[0] == '+' && p[1] == '+' && (type = C_ADD_POST))   // post ++
+	     || (p[0] == '-' && p[1] == '-' && (type = C_SUB_POST))   // post --
 	     || (p[0] == '<' && p[1] == '<' && p[2] == '=' && (type = C_L_SHIFT))   // <<=
 	     || (p[0] == '>' && p[1] == '>' && p[2] == '=' && (type = C_R_SHIFT))   // >>=
 	    )) {
@@ -992,20 +1080,22 @@ const char *parse_variable(const char *p)
 	}
 
 	switch(type) {
-		case C_EQ: {// incremental modifier
-				p = skip_space(&p[1]);
-			}
+		case C_ADD_PRE: // pre ++
+		case C_SUB_PRE: // pre --
+			// (nothing more to skip)
 			break;
 
-		case C_L_SHIFT:
-		case C_R_SHIFT: {// left or right shift modifier
-				p = skip_space(&p[3]);
-			}
+		case C_EQ: // =
+			p = skip_space(&p[1]);
 			break;
 
-		default: {// normal incremental command
-				p = skip_space(&p[2]);
-			}
+		case C_L_SHIFT: // <<=
+		case C_R_SHIFT: // >>=
+			p = skip_space( &p[3] );
+			break;
+
+		default: // everything else
+			p = skip_space(&p[2]);
 	}
 
 	if(p == NULL) {  // end of line or invalid buffer
@@ -1022,45 +1112,33 @@ const char *parse_variable(const char *p)
 	syntax.curly[syntax.curly_count].flag = ARGLIST_PAREN;
 
 	// increment the total curly count for the position in the script
-	++ syntax.curly_count;
+	++syntax.curly_count;
 
 	// parse the variable currently being modified
 	word = add_word(var);
 
-	if(str_data[word].type == C_FUNC || str_data[word].type == C_USERFUNC || str_data[word].type == C_USERFUNC_POS) {
+	if(str_data[word].type == C_FUNC 
+	|| str_data[word].type == C_USERFUNC 
+	|| str_data[word].type == C_USERFUNC_POS
+	) {
 		// cannot assign a variable which exists as a function or label
 		disp_error_message("Não é possível modificar uma variável que tem o mesmo nome de uma função ou um label.", p);
 	}
 
-	if(p2) {  // process the variable index
-		const char *p3 = NULL;
+	parse_variable_sub_push(word, p2); // Push variable onto the stack
 
-		// push the getelementofarray method into the stack
-		add_scriptl(buildin_getelementofarray_ref);
-		add_scriptc(C_ARG);
-		add_scriptl(word);
-
-		// process the sub-expression for this assignment
-		p3 = parse_subexpr(p2 + 1, 1);
-		p3 = skip_space(p3);
-
-		if(*p3 != ']') {  // closing parenthesis is required for this script
-			disp_error_message("Falta de fechamento ']' parêntese para a atribuição de variável.", p3);
-		}
-
-		// push the closing function stack operator onto the stack
-		add_scriptc(C_FUNC);
-		p3 ++;
-	} else {// simply push the variable or value onto the stack
-		add_scriptl(word);
+	if(type != C_EQ) {
+		parse_variable_sub_push(word, p2); // Push variable onto the stack once again (first argument of setr)
 	}
 
-	if(type != C_EQ)
-		add_scriptc(C_REF);
-
-	if(type == C_ADD_PP || type == C_SUB_PP) {  // incremental operator for the method
+	if( type == C_ADD_POST || type == C_SUB_POST ) { // post ++ / --
 		add_scripti(1);
-		add_scriptc(type == C_ADD_PP ? C_ADD : C_SUB);
+		add_scriptc(type == C_ADD_POST ? C_ADD : C_SUB);
+
+		parse_variable_sub_push(word, p2); // Push variable onto the stack (third argument of setr)
+	} else if( type == C_ADD_PRE || type == C_SUB_PRE ) { // pre ++ / --
+		add_scripti(1);
+		add_scriptc(type == C_ADD_PRE ? C_ADD : C_SUB);
 	} else {// process the value as an expression
 		p = parse_subexpr(p, -1);
 
@@ -1071,7 +1149,7 @@ const char *parse_variable(const char *p)
 	}
 
 	// decrement the curly count for the position within the script
-	-- syntax.curly_count;
+	--syntax.curly_count;
 
 	// close the script by appending the function operator
 	add_scriptc(C_FUNC);
@@ -1160,26 +1238,29 @@ const char *parse_simpleexpr(const char *p)
 		p=np;
 	} else if(*p=='"') {
 		add_scriptc(C_STR);
-		p++;
-		while(*p && *p != '"') {
-			if((unsigned char)p[-1] <= 0x7e && *p == '\\') {
-				char buf[8];
-				size_t len = skip_escaped_c(p) - p;
-				size_t n = sv_unescape_c(buf, p, len);
-				if(n != 1)
-					ShowDebug("parse_simpleexpr: comprimento %d inesperado (\"%.*s\" -> %.*s)\n", (int)n, (int)len, p, (int)n, buf);
-				p += len;
-				add_scriptb(*buf);
-				continue;
-			} else if(*p == '\n') {
-				disp_error_message("parse_simpleexpr: quebra de linha inesperada",p);
+		do {
+			p++;
+			while(*p && *p != '"') {
+				if((unsigned char)p[-1] <= 0x7e && *p == '\\') {
+					char buf[8];
+					size_t len = skip_escaped_c(p) - p;
+					size_t n = sv_unescape_c(buf, p, len);
+					if(n != 1)
+						ShowDebug("parse_simpleexpr: comprimento %d inesperado (\"%.*s\" -> %.*s)\n", (int)n, (int)len, p, (int)n, buf);
+					p += len;
+					add_scriptb(*buf);
+					continue;
+				} else if(*p == '\n') {
+					disp_error_message("parse_simpleexpr: quebra de linha inesperada",p);
+				}
+				add_scriptb(*p++);
 			}
-			add_scriptb(*p++);
-		}
-		if(!*p)
-			disp_error_message("parse_simpleexpr: fim de arquivo inesperado",p);
+			if(!*p)
+				disp_error_message("parse_simpleexpr: fim de arquivo inesperado",p);
+				p++;    //'"'
+				p = skip_space(p);
+		} while( *p && *p == '"' );
 		add_scriptb(0);
-		p++;    //'"'
 	} else {
 		int l;
 		const char *pv;
@@ -1246,32 +1327,36 @@ const char *parse_subexpr(const char *p,int limit)
 		}
 	}
 
-	if((op=C_NEG,*p=='-') || (op=C_LNOT,*p=='!') || (op=C_NOT,*p=='~')) {
-		p=parse_subexpr(p+1,10);
+	if((op=C_ADD_PRE,p[0]=='+'&&p[1]=='+') || (op=C_SUB_PRE,p[0]=='-'&&p[1]=='-') ) { // Pre ++ -- operators
+		p=parse_variable(p);
+	} else if((op=C_NEG,*p=='-') || (op=C_LNOT,*p=='!') || (op=C_NOT,*p=='~')) { // Unary - ! ~ operators
+		p=parse_subexpr(p+1,11);
 		add_scriptc(op);
-	} else
+	} else {
 		p=parse_simpleexpr(p);
+	}
 	p=skip_space(p);
 	while((
-	          (op=C_OP3,opl=0,len=1,*p=='?') ||
-	          (op=C_ADD,opl=8,len=1,*p=='+') ||
-	          (op=C_SUB,opl=8,len=1,*p=='-') ||
-	          (op=C_MUL,opl=9,len=1,*p=='*') ||
-	          (op=C_DIV,opl=9,len=1,*p=='/') ||
-	          (op=C_MOD,opl=9,len=1,*p=='%') ||
-	          (op=C_LAND,opl=2,len=2,*p=='&' && p[1]=='&') ||
-	          (op=C_AND,opl=6,len=1,*p=='&') ||
-	          (op=C_LOR,opl=1,len=2,*p=='|' && p[1]=='|') ||
-	          (op=C_OR,opl=5,len=1,*p=='|') ||
-	          (op=C_XOR,opl=4,len=1,*p=='^') ||
-	          (op=C_EQ,opl=3,len=2,*p=='=' && p[1]=='=') ||
-	          (op=C_NE,opl=3,len=2,*p=='!' && p[1]=='=') ||
-	          (op=C_R_SHIFT,opl=7,len=2,*p=='>' && p[1]=='>') ||
-	          (op=C_GE,opl=3,len=2,*p=='>' && p[1]=='=') ||
-	          (op=C_GT,opl=3,len=1,*p=='>') ||
-	          (op=C_L_SHIFT,opl=7,len=2,*p=='<' && p[1]=='<') ||
-	          (op=C_LE,opl=3,len=2,*p=='<' && p[1]=='=') ||
-	          (op=C_LT,opl=3,len=1,*p=='<')) && opl>limit) {
+	   (op=C_OP3,    opl=0, len=1,*p=='?')              // ?:
+	|| (op=C_ADD,    opl=9, len=1,*p=='+')              // +
+	|| (op=C_SUB,    opl=9, len=1,*p=='-')              // -
+	|| (op=C_MUL,    opl=10,len=1,*p=='*')              // *
+	|| (op=C_DIV,    opl=10,len=1,*p=='/')              // /
+	|| (op=C_MOD,    opl=10,len=1,*p=='%')              // %
+	|| (op=C_LAND,   opl=2, len=2,*p=='&' && p[1]=='&') // &&
+	|| (op=C_AND,    opl=5, len=1,*p=='&')              // &
+	|| (op=C_LOR,    opl=1, len=2,*p=='|' && p[1]=='|') // ||
+	|| (op=C_OR,     opl=3, len=1,*p=='|')              // |
+	|| (op=C_XOR,    opl=4, len=1,*p=='^')              // ^
+	|| (op=C_EQ,     opl=6, len=2,*p=='=' && p[1]=='=') // ==
+	|| (op=C_NE,     opl=6, len=2,*p=='!' && p[1]=='=') // !=
+	|| (op=C_R_SHIFT,opl=8, len=2,*p=='>' && p[1]=='>') // >>
+	|| (op=C_GE,     opl=7, len=2,*p=='>' && p[1]=='=') // >=
+	|| (op=C_GT,     opl=7, len=1,*p=='>')              // >
+	|| (op=C_L_SHIFT,opl=8, len=2,*p=='<' && p[1]=='<') // <<
+	|| (op=C_LE,     opl=7, len=2,*p=='<' && p[1]=='=') // <=
+	|| (op=C_LT,     opl=7, len=1,*p=='<')              // <
+	) && opl>limit) {
 		p+=len;
 		if(op == C_OP3) {
 			p=parse_subexpr(p,-1);
@@ -1426,13 +1511,10 @@ const char *parse_syntax(const char *p)
 	switch(*p) {
 		case 'B':
 		case 'b':
-			if(p2 - p == 5 && !strncasecmp(p,"break",5)) {
+			if( p2 - p == 5 && strncmp(p,"break",5) == 0 ) {
 				// break Processing
 				char label[256];
 				int pos = syntax.curly_count - 1;
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "break", 5) != 0) disp_deprecation_message("parse_syntax", "break", p); // TODO
-#endif
 				while(pos >= 0) {
 					if(syntax.curly[pos].type == TYPE_DO) {
 						sprintf(label,"goto __DO%x_FIN;",syntax.curly[pos].index);
@@ -1462,16 +1544,17 @@ const char *parse_syntax(const char *p)
 				// Closing decision if, for , while
 				p = parse_syntax_close(p + 1);
 				return p;
+#ifdef ENABLE_CASE_CHECK
+		} else if(p2 - p == 5 && strncasecmp(p, "break", 5) == 0) {
+			disp_deprecation_message("parse_syntax", "break", p); // TODO
+#endif
 			}
 			break;
 		case 'c':
 		case 'C':
-			if(p2 - p == 4 && !strncasecmp(p,"case",4)) {
+			if( p2 - p == 4 && strncmp(p, "case", 4) == 0 ) {
 				//Processing case
 				int pos = syntax.curly_count-1;
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "case", 4) != 0) disp_deprecation_message("parse_syntax", "case", p); // TODO
-#endif
 				if(pos < 0 || syntax.curly[pos].type != TYPE_SWITCH) {
 					disp_error_message("parse_syntax: 'case' inesperado",p);
 					return p+1;
@@ -1544,13 +1627,10 @@ const char *parse_syntax(const char *p)
 					syntax.curly[pos].count++;
 				}
 				return p + 1;
-			} else if(p2 - p == 8 && !strncasecmp(p,"continue",8)) {
+			} else if( p2 - p == 8 && strncmp(p, "continue", 8) == 0 ) {
 				// Processing continue
 				char label[256];
 				int pos = syntax.curly_count - 1;
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "continue", 8) != 0) disp_deprecation_message("parse_syntax", "continue", p); // TODO
-#endif
 				while(pos >= 0) {
 					if(syntax.curly[pos].type == TYPE_DO) {
 						sprintf(label,"goto __DO%x_NXT;",syntax.curly[pos].index);
@@ -1575,19 +1655,22 @@ const char *parse_syntax(const char *p)
 				p = skip_space(p2);
 				if(*p != ';')
 					disp_error_message("parse_syntax: ';' necessario",p);
-				// if, for , while ????????
+				//Closing decision if, for , while
 				p = parse_syntax_close(p + 1);
 				return p;
+#ifdef ENABLE_CASE_CHECK
+		} else if( p2 - p == 4 && strncasecmp(p, "case", 4) == 0 ) {
+			disp_deprecation_message("parse_syntax", "case", p); // TODO
+		} else if( p2 - p == 8 && strncasecmp(p, "continue", 8) == 0 ) {
+			disp_deprecation_message("parse_syntax", "continue", p); // TODO
+#endif
 			}
 			break;
 		case 'd':
 		case 'D':
-			if(p2 - p == 7 && !strncasecmp(p,"default",7)) {
+			if( p2 - p == 7 && strncmp(p, "default", 7) == 0 ) {
 				// switch - default processing
 				int pos = syntax.curly_count-1;
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "default", 7) != 0) disp_deprecation_message("parse_syntax", "default", p); // TODO
-#endif
 				if(pos < 0 || syntax.curly[pos].type != TYPE_SWITCH) {
 					disp_error_message("parse_syntax: 'default' inesperado",p);
 				} else if(syntax.curly[pos].flag) {
@@ -1619,12 +1702,9 @@ const char *parse_syntax(const char *p)
 					syntax.curly[pos].count++;
 				}
 				return p + 1;
-			} else if(p2 - p == 2 && !strncasecmp(p,"do",2)) {
+			} else if( p2 - p == 2 && strncmp(p, "do", 2) == 0 ) {
 				int l;
 				char label[256];
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "do", 2) != 0) disp_deprecation_message("parse_syntax", "do", p); // TODO
-#endif
 				p=skip_space(p2);
 
 				syntax.curly[syntax.curly_count].type  = TYPE_DO;
@@ -1637,17 +1717,20 @@ const char *parse_syntax(const char *p)
 				set_label(l,script_pos,p);
 				syntax.curly_count++;
 				return p;
+#ifdef ENABLE_CASE_CHECK
+		} else if( p2 - p == 7 && strncasecmp(p, "default", 7) == 0 ) {
+			disp_deprecation_message("parse_syntax", "default", p); // TODO
+		} else if( p2 - p == 2 && strncasecmp(p, "do", 2) == 0 ) {
+			disp_deprecation_message("parse_syntax", "do", p); // TODO
+#endif
 			}
 			break;
 		case 'f':
 		case 'F':
-			if(p2 - p == 3 && !strncasecmp(p,"for",3)) {
+			if( p2 - p == 3 && strncmp(p, "for", 3) == 0 ) {
 				int l;
 				char label[256];
 				int  pos = syntax.curly_count;
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "for", 3) != 0) disp_deprecation_message("parse_syntax", "for", p); // TODO
-#endif
 				syntax.curly[syntax.curly_count].type  = TYPE_FOR;
 				syntax.curly[syntax.curly_count].count = 1;
 				syntax.curly[syntax.curly_count].index = syntax.index++;
@@ -1688,43 +1771,39 @@ const char *parse_syntax(const char *p)
 					disp_error_message("parse_syntax: ';' necessario",p);
 				p++;
 
-				// ???[?v?J?n??????
+				// Skip to the beginning of the loop
 				sprintf(label,"goto __FR%x_BGN;",syntax.curly[pos].index);
 				syntax.curly[syntax.curly_count++].type = TYPE_NULL;
 				parse_line(label);
 				syntax.curly_count--;
 
-				// ???~??[?v??~??x???`??????
+				// Labels to form the next loop
 				sprintf(label,"__FR%x_NXT",syntax.curly[pos].index);
 				l=add_str(label);
 				set_label(l,script_pos,p);
 
-				// ???~??[?v??????????
-				// for ?O??? ')' ?? ';' ????C????t???O
+				// Process the next time you enter the loop
+				// A ')' last for; flag to be treated as'
 				parse_syntax_for_flag = 1;
 				syntax.curly[syntax.curly_count++].type = TYPE_NULL;
 				p=parse_line(p);
 				syntax.curly_count--;
 				parse_syntax_for_flag = 0;
 
-				// ?????????????
+				// Skip to the determination process conditions
 				sprintf(label,"goto __FR%x_J;",syntax.curly[pos].index);
 				syntax.curly[syntax.curly_count++].type = TYPE_NULL;
 				parse_line(label);
 				syntax.curly_count--;
 
-				// ???[?v?J?n?~??x???t??
+				// Loop start labeling
 				sprintf(label,"__FR%x_BGN",syntax.curly[pos].index);
 				l=add_str(label);
 				set_label(l,script_pos,p);
 				return p;
-			} else if(p2 - p == 8 && strncasecmp(p,"function",8) == 0) {
+			} else if( p2 - p == 8 && strncmp(p, "function", 8) == 0 ) {
 				// internal script function
 				const char *func_name;
-
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "function", 8) != 0) disp_deprecation_message("parse_syntax", "function", p); // TODO
-#endif
 
 				func_name = skip_space(p2);
 				p = skip_word(func_name);
@@ -1743,7 +1822,7 @@ const char *parse_syntax(const char *p)
 					else
 						disp_error_message("parse_syntax:function: function name is invalid", func_name);
 
-					// if, for , while ????????
+					// Close condition of if, for, while
 					p = parse_syntax_close(p2 + 1);
 					return p;
 				} else if(*p2 == '{') {
@@ -1778,16 +1857,19 @@ const char *parse_syntax(const char *p)
 				} else {
 					disp_error_message("esperado ';' ou '{' na sintaxe da funcao",p);
 				}
+#ifdef ENABLE_CASE_CHECK
+		} else if( p2 - p == 3 && strncasecmp(p, "for", 3) == 0 ) {
+			disp_deprecation_message("parse_syntax", "for", p); // TODO
+		} else if( p2 - p == 8 && strncasecmp(p, "function", 8) == 0 ) {
+			disp_deprecation_message("parse_syntax", "function", p); // TODO
+#endif
 			}
 			break;
 		case 'i':
 		case 'I':
-			if(p2 - p == 2 && !strncasecmp(p,"if",2)) {
+			if( p2 - p == 2 && strncmp(p, "if", 2) == 0 ) {
 				// If process
 				char label[256];
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "if", 2) != 0) disp_deprecation_message("parse_syntax", "if", p); // TODO
-#endif
 				p=skip_space(p2);
 				if(*p != '(') { //Prevent if this {} non-c syntax. from Rayce (jA)
 					disp_error_message("'(' necessario",p);
@@ -1805,16 +1887,17 @@ const char *parse_syntax(const char *p)
 				add_scriptl(add_str(label));
 				add_scriptc(C_FUNC);
 				return p;
+#ifdef ENABLE_CASE_CHECK
+		} else if( p2 - p == 2 && strncasecmp(p, "if", 2) == 0 ) {
+			disp_deprecation_message("parse_syntax", "if", p); // TODO
+#endif
 			}
 			break;
 		case 's':
 		case 'S':
-			if(p2 - p == 6 && !strncasecmp(p,"switch",6)) {
+			if( p2 - p == 6 && strncmp(p, "switch", 6) == 0 ) {
 				// Processing of switch ()
 				char label[256];
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "switch", 6) != 0) disp_deprecation_message("parse_syntax", "switch", p); // TODO
-#endif
 				p=skip_space(p2);
 				if(*p != '(') {
 					disp_error_message("'(' necessario",p);
@@ -1835,16 +1918,17 @@ const char *parse_syntax(const char *p)
 				}
 				add_scriptc(C_FUNC);
 				return p + 1;
+#ifdef ENABLE_CASE_CHECK
+		} else if( p2 - p == 6 && strncasecmp(p, "switch", 6) == 0 ) {
+			disp_deprecation_message("parse_syntax", "switch", p); // TODO
+#endif
 			}
 			break;
 		case 'w':
 		case 'W':
-			if(p2 - p == 5 && !strncasecmp(p,"while",5)) {
+			if( p2 - p == 5 && strncmp(p, "while", 5) == 0 ) {
 				int l;
 				char label[256];
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "while", 5) != 0) disp_deprecation_message("parse_syntax", "while", p); // TODO
-#endif
 				p=skip_space(p2);
 				if(*p != '(') {
 					disp_error_message("'(' necessario",p);
@@ -1853,12 +1937,12 @@ const char *parse_syntax(const char *p)
 				syntax.curly[syntax.curly_count].count = 1;
 				syntax.curly[syntax.curly_count].index = syntax.index++;
 				syntax.curly[syntax.curly_count].flag  = 0;
-				// ????f?J?n?~??x???`??????
+				// Form the start of label decision
 				sprintf(label,"__WL%x_NXT",syntax.curly[syntax.curly_count].index);
 				l=add_str(label);
 				set_label(l,script_pos,p);
 
-				// ????U????I???n?_??????
+				// Skip to the end point if the condition is false
 				sprintf(label,"__WL%x_FIN",syntax.curly[syntax.curly_count].index);
 				syntax.curly_count++;
 				add_scriptl(add_str("jump_zero"));
@@ -1868,6 +1952,10 @@ const char *parse_syntax(const char *p)
 				add_scriptl(add_str(label));
 				add_scriptc(C_FUNC);
 				return p;
+#ifdef ENABLE_CASE_CHECK
+		} else if( p2 - p == 5 && strncasecmp(p, "while", 5) == 0 ) {
+			disp_deprecation_message("parse_syntax", "while", p); // TODO
+#endif
 			}
 			break;
 	}
@@ -1876,7 +1964,7 @@ const char *parse_syntax(const char *p)
 
 const char *parse_syntax_close(const char *p)
 {
-	// if(...) for(...) hoge(); ?^???A?P?x??????????ex??????????m?F????
+	// If (...) for (...) hoge (); as to make sure closed closed once again
 	int flag;
 
 	do {
@@ -1885,9 +1973,9 @@ const char *parse_syntax_close(const char *p)
 	return p;
 }
 
-// if, for , while , do ????????
-//	 flag == 1 : ???????
-//	 flag == 0 : ??????????
+// Close judgment if, for, while, of do
+//	 flag == 1 : closed
+//	 flag == 0 : not closed
 const char *parse_syntax_close_sub(const char *p,int *flag)
 {
 	char label[256];
@@ -1919,14 +2007,11 @@ const char *parse_syntax_close_sub(const char *p,int *flag)
 		syntax.curly[pos].count++;
 		p = skip_space(p);
 		p2 = skip_word(p);
-		if(!syntax.curly[pos].flag && p2 - p == 4 && !strncasecmp(p,"else",4)) {
-#ifdef ENABLE_CASE_CHECK
-			if(strncmp(p, "else", 4) != 0) disp_deprecation_message("parse_syntax", "else", p); // TODO
-#endif
+		if(!syntax.curly[pos].flag && p2 - p == 4 && strncmp(p, "else", 4) == 0 ) {
 			// else  or else - if
 			p = skip_space(p2);
 			p2 = skip_word(p);
-			if(p2 - p == 2 && !strncasecmp(p,"if",2)) {
+			if( p2 - p == 2 && strncmp(p, "if", 2) == 0 ) {
 				// else - if
 				p=skip_space(p2);
 				if(*p != '(') {
@@ -1941,6 +2026,10 @@ const char *parse_syntax_close_sub(const char *p,int *flag)
 				add_scriptc(C_FUNC);
 				*flag = 0;
 				return p;
+#ifdef ENABLE_CASE_CHECK
+			} else if( p2 - p == 2 && strncasecmp(p, "if", 2) == 0 ) {
+				disp_deprecation_message("parse_syntax", "if", p); // TODO
+#endif
 			} else {
 				// else
 				if(!syntax.curly[pos].flag) {
@@ -1949,6 +2038,10 @@ const char *parse_syntax_close_sub(const char *p,int *flag)
 					return p;
 				}
 			}
+#ifdef ENABLE_CASE_CHECK
+		} else if( !syntax.curly[pos].flag && p2 - p == 4 && strncasecmp(p, "else", 4) == 0 ) {
+			disp_deprecation_message("parse_syntax", "else", p); // TODO
+#endif
 		}
 		// Close if
 		syntax.curly_count--;
@@ -1976,11 +2069,13 @@ const char *parse_syntax_close_sub(const char *p,int *flag)
 		// Skip to the end point if the condition is false
 		p = skip_space(p);
 		p2 = skip_word(p);
-		if(p2 - p != 5 || strncasecmp(p,"while",5))
-			disp_error_message("parse_syntax: 'while' necessario",p);
+		if( p2 - p != 5 || strncmp(p, "while", 5) != 0 ) {
+
 #ifdef ENABLE_CASE_CHECK
-		if(strncmp(p, "while", 5) != 0) disp_deprecation_message("parse_syntax", "while", p); // TODO
+			if( p2 - p == 5 && strncasecmp(p, "while", 5) == 0 ) disp_deprecation_message("parse_syntax", "while", p); // TODO
 #endif
+			disp_error_message("parse_syntax: 'while' necessario",p);
+		}
 
 		p = skip_space(p2);
 		if(*p != '(') {
@@ -2100,7 +2195,7 @@ static void add_buildin_func(void)
 			str_data[n].val = i;
 			str_data[n].func = buildin_func[i].func;
 
-			if(!strcmp(buildin_func[i].name, "set")) buildin_set_ref = n;
+			if(!strcmp(buildin_func[i].name, "setr")) buildin_set_ref = n;
 			else if(!strcmp(buildin_func[i].name, "callsub")) buildin_callsub_ref = n;
 			else if(!strcmp(buildin_func[i].name, "callfunc")) buildin_callfunc_ref = n;
 			else if(!strcmp(buildin_func[i].name, "getelementofarray")) buildin_getelementofarray_ref = n;
@@ -2220,9 +2315,9 @@ static const char *script_print_line(StringBuf *buf, const char *p, const char *
 	int i, mark_pos = 0, tabstop = TAB_SIZE;
 	if(p == NULL || !p[0]) return NULL;
 	if(line < 0)
-		StringBuf_Printf(buf, "*% 5d : ", -line); // len = 8
+		StringBuf_Printf(buf, "*%5d: ", -line); // len = 8
 	else
-		StringBuf_Printf(buf, " % 5d : ", line); // len = 8
+		StringBuf_Printf(buf, " %5d: ", line); // len = 8
 	update_tabstop(tabstop,8);                      // len = 8
 	for(i=0; p[i] && p[i] != '\n'; i++) {
 		char c = p[i];
@@ -2295,7 +2390,7 @@ void script_error(const char* src, const char* file, int start_line, const char*
 	StringBuf buf;
 
 	StringBuf_Init(&buf);
-	StringBuf_AppendStr(&buf, "\a\n");
+	StringBuf_AppendStr(&buf, "\a");
 
 	script_errorwarning_sub(&buf, src, file, start_line, error_msg, error_pos);
 
@@ -2364,7 +2459,7 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 		for(i=0; i<size; i++)
 			linkdb_final(&syntax.curly[i].case_label);
 #ifdef ENABLE_CASE_CHECK
-	script->local_casecheck_clear();
+	script->local_casecheck.clear();
 #endif
 		return NULL;
 	}
@@ -2381,7 +2476,7 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 			script_size = 0;
 			script_buf  = NULL;
 #ifdef ENABLE_CASE_CHECK
-	script->local_casecheck_clear();
+	script->local_casecheck.clear();
 #endif
 			return NULL;
 		}
@@ -2398,7 +2493,7 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 			script_size = 0;
 			script_buf  = NULL;
 #ifdef ENABLE_CASE_CHECK
-	script->local_casecheck_clear();
+	script->local_casecheck.clear();
 #endif
 			return NULL;
 		}
@@ -2420,9 +2515,9 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 	while(syntax.curly_count != 0 || *p != end) {
 		if(*p == '\0')
 			disp_error_message("fim de script inesperado",p);
-		// label?????????
+		// Special handling only label
 		tmpp=skip_space(skip_word(p));
-		if(*tmpp==':' && !(!strncasecmp(p,"default:",8) && p + 7 == tmpp)) {
+		if(*tmpp==':' && !(strncmp(p,"default:",8) == 0 && p + 7 == tmpp)) {
 			i=add_word(p);
 			set_label(i,script_pos,p);
 			if(parse_options&SCRIPT_USE_LABEL_DB)
@@ -2497,7 +2592,7 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 					i += 3;
 					break;
 				case C_STR:
-					j = strlen(script_buf + i);
+					j = strlen((char*)script_buf + i);
 					ShowMessage(" %s", script_buf + i);
 					i += j+1;
 					break;
@@ -2512,7 +2607,7 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 	code->script_size = script_size;
 	code->script_vars = NULL;
 #ifdef ENABLE_CASE_CHECK
-	script->local_casecheck_clear();
+	script->local_casecheck.clear();
 #endif
 	return code;
 }
@@ -2598,7 +2693,7 @@ void get_val(struct script_state *st, struct script_data *data)
 				break;
 			case '\'':
 				if(st->instance_id >= 0) {
-					data->u.str = (char *)idb_get(instances[st->instance_id].vars,reference_getuid(data));
+					data->u.str = (char *)idb_get(instance->list[st->instance_id].vars,reference_getuid(data));
 				} else {
 					ShowWarning("script__get_val: cannot access instance variable '%s', defaulting to \"\"\n", name);
 					data->u.str = NULL;
@@ -2655,7 +2750,7 @@ void get_val(struct script_state *st, struct script_data *data)
 					break;
 				case '\'':
 					if(st->instance_id >= 0)
-						data->u.num = (int)idb_iget(instances[st->instance_id].vars,reference_getuid(data));
+						data->u.num = (int)idb_iget(instance->list[st->instance_id].vars,reference_getuid(data));
 					else {
 						ShowWarning("script_get_val: cannot access instance variable '%s', defaulting to 0\n", name);
 						data->u.num = 0;
@@ -2713,8 +2808,8 @@ static int set_reg(struct script_state *st, TBL_PC *sd, int num, const char *nam
 				return 1;
 			case '\'':
 				if(st->instance_id >= 0) {
-					idb_remove(instances[st->instance_id].vars, num);
-					if(str[0]) idb_put(instances[st->instance_id].vars, num, aStrdup(str));
+					idb_remove(instance->list[st->instance_id].vars, num);
+					if(str[0]) idb_put(instance->list[st->instance_id].vars, num, aStrdup(str));
 				}
 				return 1;
 			default:
@@ -2756,9 +2851,9 @@ static int set_reg(struct script_state *st, TBL_PC *sd, int num, const char *nam
 				return 1;
 			case '\'':
 				if(st->instance_id >= 0) {
-					idb_remove(instances[st->instance_id].vars, num);
+					idb_remove(instance->list[st->instance_id].vars, num);
 					if(val != 0)
-						idb_iput(instances[st->instance_id].vars, num, val);
+						idb_iput(instance->list[st->instance_id].vars, num, val);
 				}
 				return 1;
 			default:
@@ -3795,8 +3890,7 @@ int script_config_read(char *cfgName)
 	FILE *fp;
 
 
-	fp=fopen(cfgName,"r");
-	if(fp==NULL) {
+	if(!(fp = fopen(cfgName,"r"))){
 		ShowError("Arquivo n%co encontrado: %s\n", 198, cfgName);
 		return 1;
 	}
@@ -4204,10 +4298,10 @@ int do_final_script()
 	if( script->word_buf != NULL )
 		aFree(script->word_buf);
 
-	if(script->local_casecheck_str_buf)
-		aFree(script->local_casecheck_str_buf);
-	if(script->local_casecheck_str_data)
-		aFree(script->local_casecheck_str_data);
+#ifdef ENABLE_CASE_CHECK
+	script->global_casecheck.clear();
+	script->local_casecheck.clear();
+#endif
 
 	ers_destroy(script->st_ers);
 	ers_destroy(script->stack_ers);
@@ -4288,6 +4382,10 @@ int script_reload()
 	int i;
 	DBIterator *iter;
 	struct script_state *st;
+
+#ifdef ENABLE_CASE_CHECK
+	script->global_casecheck.clear();
+#endif
 
 #ifdef BETA_THREAD_TEST
 	/* we're reloading so any queries undergoing should be...exterminated. */
@@ -5458,7 +5556,7 @@ BUILDIN_FUNC(copyarray);
 /// The value is converted to the type of the variable.
 ///
 /// set(<variable>,<value>) -> <variable>
-BUILDIN_FUNC(set)
+BUILDIN_FUNC(setr)
 {
 	TBL_PC *sd = NULL;
 	struct script_data *data;
@@ -5516,13 +5614,22 @@ BUILDIN_FUNC(set)
 	}
 #endif
 
+	if(script_hasdata(st, 4)) {
+		// Optional argument used by post-increment/post-decrement constructs to return the previous value
+		if(is_string_variable(name)) {
+			script_pushstrcopy(st, script_getstr(st, 4));
+		} else {
+			script_pushint(st, script_getnum(st, 4));
+		}
+	} else {
+		// return a copy of the variable reference
+		script_pushcopy(st,2);
+	}
+
 	if(is_string_variable(name))
 		set_reg(st,sd,num,name,(void *)script_getstr(st,3),script_getref(st,2));
 	else
 		set_reg(st,sd,num,name,(void *)__64BPRTSIZE(script_getnum(st,3)),script_getref(st,2));
-
-	// return a copy of the variable reference
-	script_pushcopy(st,2);
 
 	return 0;
 }
@@ -16054,16 +16161,17 @@ BUILDIN_FUNC(setquest)
 {
 	struct map_session_data *sd = script_rid2sd(st);
 	unsigned short i;
+	int quest_id;
+	nullpo_retr(false,sd);
 
-	if (!sd)
-		return 1;
+	quest_id = script_getnum(st, 2);
 
-	quest_add(sd, script_getnum(st, 2));
+	quest->add(sd, quest_id);
 
 	// If questinfo is set, remove quest bubble once quest is set.
 	for(i = 0; i < map[sd->bl.m].qi_count; i++) {
 		struct questinfo *qi = &map[sd->bl.m].qi_data[i];
-		if(qi->quest_id == script_getnum(st, 2)) {
+		if(qi->quest_id == quest_id) {
 #if PACKETVER >= 20120410
 			clif_quest_show_event(sd, &qi->nd->bl, 9999, 0);
 #else
@@ -16080,7 +16188,7 @@ BUILDIN_FUNC(erasequest)
 	struct map_session_data *sd = script_rid2sd(st);
 	nullpo_ret(sd);
 
-	quest_delete(sd, script_getnum(st, 2));
+	quest->delete(sd, script_getnum(st, 2));
 	return 0;
 }
 
@@ -16089,7 +16197,7 @@ BUILDIN_FUNC(completequest)
 	struct map_session_data *sd = script_rid2sd(st);
 	nullpo_ret(sd);
 
-	quest_update_status(sd, script_getnum(st, 2), Q_COMPLETE);
+	quest->update_status(sd, script_getnum(st, 2), Q_COMPLETE);
 	return 0;
 }
 
@@ -16098,21 +16206,21 @@ BUILDIN_FUNC(changequest)
 	struct map_session_data *sd = script_rid2sd(st);
 	nullpo_ret(sd);
 
-	quest_change(sd, script_getnum(st, 2),script_getnum(st, 3));
+	quest->change(sd, script_getnum(st, 2),script_getnum(st, 3));
 	return 0;
 }
 
 BUILDIN_FUNC(checkquest)
 {
 	struct map_session_data *sd = script_rid2sd(st);
-	quest_check_type type = HAVEQUEST;
+	enum quest_check_type type = HAVEQUEST;
 
-	nullpo_ret(sd);
+	nullpo_retr(false,sd);
 
 	if(script_hasdata(st, 3))
-		type = (quest_check_type)script_getnum(st, 3);
+		type = (enum quest_check_type)script_getnum(st, 3);
 
-	script_pushint(st, quest_check(sd, script_getnum(st, 2), type));
+	script_pushint(st, quest->check(sd, script_getnum(st, 2), type));
 
 	return 0;
 }
@@ -16546,7 +16654,7 @@ BUILDIN_FUNC(instance_init)
 		return 0;
 	}
 
-	if(instances[instance_id].state != INSTANCE_IDLE) {
+	if(instance->list[instance_id].state != INSTANCE_IDLE) {
 		ShowError("instance_init: instance already initialized.\n");
 		return 0;
 	}
@@ -16578,8 +16686,8 @@ BUILDIN_FUNC(instance_announce)
 	if(!instance->valid(instance_id))
 		return 0;
 
-	for(i = 0; i < instances[instance_id].num_map; i++)
-		map_foreachinmap(buildin_announce_sub, instances[instance_id].map[i], BL_PC,
+	for(i = 0; i < instance->list[instance_id].num_map; i++)
+		map_foreachinmap(buildin_announce_sub, instance->list[instance_id].map[i], BL_PC,
 						 mes, strlen(mes)+1, flag&BC_COLOR_MASK, fontColor, fontType, fontSize, fontAlign, fontY);
 
 	return 0;
@@ -16634,8 +16742,8 @@ BUILDIN_FUNC(has_instance)
 		if( sd->instances ) {
 			for(i = 0; i < sd->instances; i++) {
 				if(sd->instance[i] >= 0) {
-					ARR_FIND(0, instances[sd->instance[i]].num_map, j, map[instances[sd->instance[i]].map[j]].instance_src_map == m);
-					if(j != instances[sd->instance[i]].num_map)
+					ARR_FIND(0, instance->list[sd->instance[i]].num_map, j, map[instance->list[sd->instance[i]].map[j]].instance_src_map == m);
+					if(j != instance->list[sd->instance[i]].num_map)
 						break;
 				}
 			}
@@ -16645,8 +16753,8 @@ BUILDIN_FUNC(has_instance)
 		if(instance_id == -1 && sd->status.party_id && (p = party_search(sd->status.party_id)) && p->instances) {
 			for(i = 0; i < p->instances; i++) {
 				if(p->instance[i] >= 0) {
-					ARR_FIND(0, instances[p->instance[i]].num_map, j, map[instances[p->instance[i]].map[j]].instance_src_map == m);
-					if(j != instances[p->instance[i]].num_map)
+					ARR_FIND(0, instance->list[p->instance[i]].num_map, j, map[instance->list[p->instance[i]].map[j]].instance_src_map == m);
+					if(j != instance->list[p->instance[i]].num_map)
 						break;
 				}
 			}
@@ -16656,8 +16764,8 @@ BUILDIN_FUNC(has_instance)
 		if(instance_id == -1 && sd->guild && sd->guild->instances) {
 			for(i = 0; i < sd->guild->instances; i++) {
 				if(sd->guild->instance[i] >= 0) {
-					ARR_FIND(0, instances[sd->guild->instance[i]].num_map, j, map[instances[sd->guild->instance[i]].map[j]].instance_src_map == m);
-					if(j != instances[sd->guild->instance[i]].num_map)
+					ARR_FIND(0, instance->list[sd->guild->instance[i]].num_map, j, map[instance->list[sd->guild->instance[i]].map[j]].instance_src_map == m);
+					if(j != instance->list[sd->guild->instance[i]].num_map)
 						break;
 				}
 			}
@@ -17631,11 +17739,6 @@ BUILDIN_FUNC(montransform) {
 		return 1;
 	}
 
-	if(mob_id == MOBID_EMPERIUM) {
-		ShowWarning("buildin_montransform: Monster 'Emperium' cannot be used.\n");
-		return 1;
-	}
-
 	if(!(type > SC_NONE && type < SC_MAX)) {
 		ShowWarning("buildin_montransform: Unsupported status change id %d\n", type);
 		return 1;
@@ -18306,19 +18409,19 @@ BUILDIN_FUNC(instance_set_respawn) {
 	} else {
 		int i;
 		
-		for(i = 0; i < instances[instance_id].num_map; i++) {
-			if(map[instances[instance_id].map[i]].m == mid ) {
-				instances[instance_id].respawn.map = map_id2index(mid);
-				instances[instance_id].respawn.x = x;
-				instances[instance_id].respawn.y = y;
+		for(i = 0; i < instance->list[instance_id].num_map; i++) {
+			if(map[instance->list[instance_id].map[i]].m == mid ) {
+				instance->list[instance_id].respawn.map = map_id2index(mid);
+				instance->list[instance_id].respawn.x = x;
+				instance->list[instance_id].respawn.y = y;
 				break;
 			}
 		}
 		
-		if(i != instances[instance_id].num_map)
+		if(i != instance->list[instance_id].num_map)
 			script_pushint(st, 1);
 		else {
-			ShowError("buildin_instance_set_respawn: map '%s' not part of instance '%s'\n",map_name,instances[instance_id].name);
+			ShowError("buildin_instance_set_respawn: map '%s' not part of instance '%s'\n",map_name,instance->list[instance_id].name);
 			script_pushint(st, 0);
 		}
 	}
@@ -18400,7 +18503,8 @@ struct script_function buildin_func[] = {
 	BUILDIN_DEF(warpguild,"siii"), // [Fredzilla]
 	BUILDIN_DEF(setlook,"ii"),
 	BUILDIN_DEF(changelook,"ii"), // Simulates but don't Store it
-	BUILDIN_DEF(set,"rv"),
+	BUILDIN_DEF2(setr,"set","rv"),
+	BUILDIN_DEF(setr,"rv?"), // Not meant to be used directly, required for var++/var--
 	BUILDIN_DEF(setarray,"rv*"),
 	BUILDIN_DEF(cleararray,"rvi"),
 	BUILDIN_DEF(copyarray,"rri"),
@@ -18931,14 +19035,24 @@ void script_defaults(void) {
 	script->queue_clear = script_hqueue_clear;
 	script->getfuncname = script_getfuncname;
 	// for ENABLE_CASE_CHECK
-	script->local_casecheck_add_str = script_local_casecheck_add_str;
-	script->local_casecheck_clear = script_local_casecheck_clear;
-	script->local_casecheck_str_data = NULL;
-	script->local_casecheck_str_data_size = 0;
-	script->local_casecheck_str_num = 1;
-	script->local_casecheck_str_buf = NULL;
-	script->local_casecheck_str_size = 0;
-	script->local_casecheck_str_pos = 0;
-	memset(script->local_casecheck_str_hash, 0, sizeof(script->local_casecheck_str_hash));
+	script->calc_hash_ci = calc_hash_ci;
+	script->local_casecheck.add_str = script_local_casecheck_add_str;
+	script->local_casecheck.clear = script_local_casecheck_clear;
+	script->local_casecheck.str_data = NULL;
+	script->local_casecheck.str_data_size = 0;
+	script->local_casecheck.str_num = 1;
+	script->local_casecheck.str_buf = NULL;
+	script->local_casecheck.str_size = 0;
+	script->local_casecheck.str_pos = 0;
+	memset(script->local_casecheck.str_hash, 0, sizeof(script->local_casecheck.str_hash));
+	script->global_casecheck.add_str = script_global_casecheck_add_str;
+	script->global_casecheck.clear = script_global_casecheck_clear;
+	script->global_casecheck.str_data = NULL;
+	script->global_casecheck.str_data_size = 0;
+	script->global_casecheck.str_num = 1;
+	script->global_casecheck.str_buf = NULL;
+	script->global_casecheck.str_size = 0;
+	script->global_casecheck.str_pos = 0;
+	memset(script->global_casecheck.str_hash, 0, sizeof(script->global_casecheck.str_hash));
 	// end ENABLE_CASE_CHECK
 }

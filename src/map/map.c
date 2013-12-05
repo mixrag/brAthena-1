@@ -676,8 +676,8 @@ int map_foreachininstance(int (*func)(struct block_list*, va_list), int16 instan
 	int i;
 	int returnCount = 0;
 
-	for (i = 0; i < instances[instance_id].num_map; i++) {
-		int m = instances[instance_id].map[i];
+	for (i = 0; i < instance->list[instance_id].num_map; i++) {
+		int m = instance->list[instance_id].map[i];
 		va_list ap;
 		va_start(ap, type);
 		returnCount += map_vforeachinmap(func, m, type, ap);
@@ -5248,6 +5248,7 @@ void do_final(void)
 	do_final_chrif();
 	do_final_clif();
 	do_final_npc();
+	quest->final();
 	do_final_script();
 	do_final_itemdb();
 	instance->final();
@@ -5484,6 +5485,7 @@ int do_init(int argc, char *argv[])
 	homunculus_defaults();
 	itemdb_defaults();
 	script_defaults();
+	quest_defaults();
 
 
 	map_config_read(MAP_CONF_NAME);
@@ -5575,7 +5577,7 @@ int do_init(int argc, char *argv[])
 	homun->init();
 	do_init_mercenary();
 	do_init_elemental();
-	do_init_quest();
+	quest->init();
 	do_init_npc();
 	do_init_unit();
 	do_init_battleground();

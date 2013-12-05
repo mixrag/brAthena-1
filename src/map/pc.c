@@ -1125,6 +1125,9 @@ bool pc_authok(struct map_session_data *sd, int login_id2, time_t expiration_tim
 
 	sd->delayed_damage = 0;
 
+	if(battle_config.item_check)
+		sd->state.itemcheck = 1;
+
 	// Event Timers
 	for(i = 0; i < MAX_EVENTTIMER; i++)
 		sd->eventtimer[i] = INVALID_TIMER;
@@ -1133,6 +1136,11 @@ bool pc_authok(struct map_session_data *sd, int login_id2, time_t expiration_tim
 
 	for(i = 0; i < 3; i++)
 		sd->hate_mob[i] = -1;
+
+	sd->quest_log = NULL;
+	sd->num_quests = 0;
+	sd->avail_quests = 0;
+	sd->save_quest = false;
 
 	//warp player
 	if((i=pc_setpos(sd,sd->status.last_point.map, sd->status.last_point.x, sd->status.last_point.y, CLR_OUTSIGHT)) != 0) {
@@ -2000,8 +2008,8 @@ int pc_delautobonus(struct map_session_data *sd, struct s_autobonus *autobonus,c
 			if(restore && sd->state.autobonus&autobonus[i].pos) {
 				if(autobonus[i].bonus_script) {
 					int j;
-					ARR_FIND(0, EQI_MAX-1, j, sd->equip_index[j] >= 0 && sd->status.inventory[sd->equip_index[j]].equip == autobonus[i].pos);
-					if(j < EQI_MAX-1)
+					ARR_FIND(0, EQI_MAX, j, sd->equip_index[j] >= 0 && sd->status.inventory[sd->equip_index[j]].equip == autobonus[i].pos);
+					if(j < EQI_MAX)
 						script_run_autobonus(autobonus[i].bonus_script,sd->bl.id,sd->equip_index[j]);
 				}
 				continue;
@@ -2029,8 +2037,8 @@ int pc_exeautobonus(struct map_session_data *sd,struct s_autobonus *autobonus)
 
 	if(autobonus->other_script) {
 		int j;
-		ARR_FIND(0, EQI_MAX-1, j, sd->equip_index[j] >= 0 && sd->status.inventory[sd->equip_index[j]].equip == autobonus->pos);
-		if(j < EQI_MAX-1)
+		ARR_FIND(0, EQI_MAX, j, sd->equip_index[j] >= 0 && sd->status.inventory[sd->equip_index[j]].equip == autobonus->pos);
+		if(j < EQI_MAX)
 			script_run_autobonus(autobonus->other_script,sd->bl.id,sd->equip_index[j]);
 	}
 
@@ -3964,9 +3972,11 @@ int pc_additem(struct map_session_data *sd,struct item *item_data,int amount,e_l
 			return 4;
 
 		memcpy(&sd->status.inventory[i], item_data, sizeof(sd->status.inventory[0]));
-		// clear equips field first, just in case
+		// clear equip and favorite fields first, just in case
 		if(item_data->equip)
 			sd->status.inventory[i].equip = 0;
+		if(item_data->favorite)
+			sd->status.inventory[i].favorite = 0;
 
 		sd->status.inventory[i].amount = amount;
 		sd->inventory_data[i] = data;
@@ -4772,15 +4782,16 @@ int pc_steal_item(struct map_session_data *sd,struct block_list *bl, uint16 skil
 	return 1;
 }
 
-/*==========================================
- * Stole zeny from bl (mob)
- * return
- *  0 = fail
- *  1 = success
- *------------------------------------------*/
-int pc_steal_coin(struct map_session_data *sd,struct block_list *target)
-{
-	int rate,skill;
+/**
+ * Steals zeny from a monster through the RG_STEALCOIN skill.
+ *
+ * @param sd     Source character
+ * @param target Target monster
+ *
+ * @return Amount of stolen zeny (0 in case of failure)
+ **/
+int pc_steal_coin(struct map_session_data *sd, struct block_list *target) {
+	int rate, skill_lv;
 	struct mob_data *md;
 	if(!sd || !target || target->type != BL_MOB)
 		return 0;
@@ -4792,15 +4803,14 @@ int pc_steal_coin(struct map_session_data *sd,struct block_list *target)
 	if(mob_is_treasure(md))
 		return 0;
 
-	// FIXME: This formula is either custom or outdated.
-	skill = pc_checkskill(sd,RG_STEALCOIN)*10;
-	rate = skill + (sd->status.base_level - md->level)*3 + sd->battle_status.dex*2 + sd->battle_status.luk*2;
+	skill_lv = pc_checkskill(sd, RG_STEALCOIN);
+	rate = skill_lv*10 + (sd->status.base_level - md->level)*2 + sd->battle_status.dex/2 + sd->battle_status.luk/2;
 	if(rnd()%1000 < rate) {
-		int amount = md->level*10 + rnd()%100;
+		int amount = md->level * skill_lv / 10 + md->level*8 + rnd()%(md->level*2 + 1); // mob_lv * skill_lv / 10 + random [mob_lv*8; mob_lv*10]
 
 		pc_getzeny(sd, amount, LOG_TYPE_STEAL, NULL);
 		md->state.steal_coin_flag = 1;
-		return 1;
+		return amount;
 	}
 	return 0;
 }
@@ -4837,13 +4847,13 @@ int pc_setpos(struct map_session_data *sd, unsigned short mapindex, int x, int y
 		if(sd->instances) {
 			for(i = 0; i < sd->instances; i++) {
 				if(sd->instance[i] >= 0) {
-					ARR_FIND(0, instances[sd->instance[i]].num_map, j, map[instances[sd->instance[i]].map[j]].instance_src_map == m && !map[instances[sd->instance[i]].map[j]].custom_name);
-					if(j != instances[sd->instance[i]].num_map)
+					ARR_FIND(0, instance->list[sd->instance[i]].num_map, j, map[instance->list[sd->instance[i]].map[j]].instance_src_map == m && !map[instance->list[sd->instance[i]].map[j]].custom_name);
+					if(j != instance->list[sd->instance[i]].num_map)
 						break;
 				}
 			}
 			if(i != sd->instances) {
-				m = instances[sd->instance[i]].map[j];
+				m = instance->list[sd->instance[i]].map[j];
 				mapindex = map_id2index(m);
 				stop = true;
 			}
@@ -4851,13 +4861,13 @@ int pc_setpos(struct map_session_data *sd, unsigned short mapindex, int x, int y
 		if (!stop && sd->status.party_id && (p = party_search(sd->status.party_id)) && p->instances) {
 			for(i = 0; i < p->instances; i++) {
 				if(p->instance[i] >= 0) {
-					ARR_FIND(0, instances[p->instance[i]].num_map, j, map[instances[p->instance[i]].map[j]].instance_src_map == m && !map[instances[p->instance[i]].map[j]].custom_name);
-					if(j != instances[p->instance[i]].num_map)
+					ARR_FIND(0, instance->list[p->instance[i]].num_map, j, map[instance->list[p->instance[i]].map[j]].instance_src_map == m && !map[instance->list[p->instance[i]].map[j]].custom_name);
+					if(j != instance->list[p->instance[i]].num_map)
 						break;
 				}
 			}
 			if(i != p->instances) {
-				m = instances[p->instance[i]].map[j];
+				m = instance->list[p->instance[i]].map[j];
 				mapindex = map_id2index(m);
 				stop = true;
 			}
@@ -4865,24 +4875,24 @@ int pc_setpos(struct map_session_data *sd, unsigned short mapindex, int x, int y
 		if (!stop && sd->status.guild_id && sd->guild && sd->guild->instances) {
 			for(i = 0; i < sd->guild->instances; i++) {
 				if(sd->guild->instance[i] >= 0) {
-					ARR_FIND(0, instances[sd->guild->instance[i]].num_map, j, map[instances[sd->guild->instance[i]].map[j]].instance_src_map == m && !map[instances[sd->guild->instance[i]].map[j]].custom_name);
-					if(j != instances[sd->guild->instance[i]].num_map)
+					ARR_FIND(0, instance->list[sd->guild->instance[i]].num_map, j, map[instance->list[sd->guild->instance[i]].map[j]].instance_src_map == m && !map[instance->list[sd->guild->instance[i]].map[j]].custom_name);
+					if(j != instance->list[sd->guild->instance[i]].num_map)
 						break;
 				}
 			}
 			if(i != sd->guild->instances) {
-				m = instances[sd->guild->instance[i]].map[j];
+				m = instance->list[sd->guild->instance[i]].map[j];
 				mapindex = map_id2index(m);
 				stop = true;
 			}
 		}
 		/* we hit a instance, if empty we populate the spawn data */
-		if(map[m].instance_id >= 0 && instances[map[m].instance_id].respawn.map == 0 &&
-		    instances[map[m].instance_id].respawn.x == 0 &&
-		    instances[map[m].instance_id].respawn.y == 0) {
-			instances[map[m].instance_id].respawn.map = mapindex;
-			instances[map[m].instance_id].respawn.x = x;
-			instances[map[m].instance_id].respawn.y = y;
+		if(map[m].instance_id >= 0 && instance->list[map[m].instance_id].respawn.map == 0 &&
+		    instance->list[map[m].instance_id].respawn.x == 0 &&
+		    instance->list[map[m].instance_id].respawn.y == 0) {
+			instance->list[map[m].instance_id].respawn.map = mapindex;
+			instance->list[map[m].instance_id].respawn.x = x;
+			instance->list[map[m].instance_id].respawn.y = y;
 		}
 	}
 
@@ -5025,6 +5035,10 @@ int pc_setpos(struct map_session_data *sd, unsigned short mapindex, int x, int y
 		sd->md->bl.y = sd->md->ud.to_y = y;
 		sd->md->ud.dir = sd->ud.dir;
 	}
+
+	/* given autotrades have no clients you have to trigger this manually otherwise they get stuck in memory limbo bugreport:7495 */
+	if(sd->state.autotrade)
+		clif->pLoadEndAck(0,sd);
 
 	return 0;
 }
@@ -9071,11 +9085,10 @@ int pc_checkitem(struct map_session_data *sd)
 
 	nullpo_ret(sd);
 
-	if(sd->state.vending)   //Avoid reorganizing items when we are vending, as that leads to exploits (pointed out by End of Exam)
+	if(sd->state.vending) //Avoid reorganizing items when we are vending, as that leads to exploits (pointed out by End of Exam)
 		return 0;
 
-	if(battle_config.item_check) {
-		// check for invalid(ated) items
+	if(sd->state.itemcheck) { // check for invalid(ated) items
 		for(i = 0; i < MAX_INVENTORY; i++) {
 			id = sd->status.inventory[i].nameid;
 
@@ -9103,7 +9116,7 @@ int pc_checkitem(struct map_session_data *sd)
 			}
 		}
 
-		if(sd->state.gmaster_flag) {
+		if(sd->guild) {
 			struct guild_storage *guild_storage = guild2storage2(sd->guild->guild_id);
 			if(guild_storage) {
 				for(i = 0; i < MAX_GUILD_STORAGE; i++) {
@@ -9116,6 +9129,7 @@ int pc_checkitem(struct map_session_data *sd)
 				}
 			}
 		}
+		sd->state.itemcheck = 0;
 	}
 
 	for(i = 0; i < MAX_INVENTORY; i++) {

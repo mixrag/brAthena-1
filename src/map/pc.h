@@ -200,6 +200,7 @@ struct map_session_data {
 		unsigned int hold_recalc : 1;
 		unsigned int snovice_call_flag : 3; //Summon Angel (stage 1~3)
 		unsigned int hpmeter_visible : 1;
+		unsigned int itemcheck : 1;
 	} state;
 	struct {
 		unsigned char no_weapon_damage, no_magic_damage, no_misc_damage;
@@ -477,12 +478,11 @@ struct map_session_data {
 		bool changed; // if true, should sync with charserver on next mailbox request
 	} mail;
 
-	//Quest log system [Kevin] [Inkfish]
-	int num_quests;
-	int avail_quests;
-	int quest_index[MAX_QUEST_DB];
-	struct quest quest_log[MAX_QUEST_DB];
-	bool save_quest;
+	// Quest log system
+	int num_quests;          ///< Number of entries in quest_log
+	int avail_quests;        ///< Number of Q_ACTIVE and Q_INACTIVE entries in quest log (index of the first Q_COMPLETE entry)
+	struct quest *quest_log; ///< Quest log entries (note: Q_COMPLETE quests follow the first <avail_quests>th enties
+	bool save_quest;         ///< Whether the quest_log entries were modified and are waitin to be saved
 
 	// temporary debug [flaviojs]
 	const char *debug_file;

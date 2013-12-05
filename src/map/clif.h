@@ -21,6 +21,8 @@
 #include "../common/db.h" //dbmap
 #include "../common/mmo.h"
 #include "../common/socket.h"
+#include "../map/map.h"
+#include "../map/packets_struct.h"
 #include <stdarg.h>
 
 /**
@@ -409,7 +411,7 @@ void clif_dropitem(struct map_session_data *sd,int n,int amount);   //self
 void clif_delitem(struct map_session_data *sd,int n,int amount, short reason); //self
 void clif_updatestatus(struct map_session_data *sd,int type);   //self
 void clif_changestatus(struct map_session_data *sd,int type,int val);   //area
-int clif_damage(struct block_list *src, struct block_list *dst, int64 tick, int sdelay, int ddelay, int64 in_damage, int div, int type, int64 in_damage2);
+int clif_damage(struct block_list* src, struct block_list* dst, int sdelay, int ddelay, int64 damage, short div, unsigned char type, int64 damage2);
 void clif_takeitem(struct block_list *src, struct block_list *dst);
 void clif_sitting(struct block_list *bl);
 void clif_standing(struct block_list *bl);
@@ -695,10 +697,10 @@ void clif_msg_skill(struct map_session_data *sd, uint16 skill_id, int msg_id);
 //quest system [Kevin] [Inkfish]
 void clif_quest_send_list(struct map_session_data *sd);
 void clif_quest_send_mission(struct map_session_data *sd);
-void clif_quest_add(struct map_session_data *sd, struct quest *qd, int index);
+void clif_quest_add(struct map_session_data *sd, struct quest *qd);
 void clif_quest_delete(struct map_session_data *sd, int quest_id);
 void clif_quest_update_status(struct map_session_data *sd, int quest_id, bool active);
-void clif_quest_update_objective(struct map_session_data *sd, struct quest *qd, int index);
+void clif_quest_update_objective(struct map_session_data *sd, struct quest *qd);
 void clif_quest_show_event(struct map_session_data *sd, struct block_list *bl, short state, short color);
 void clif_displayexp(struct map_session_data *sd, unsigned int exp, char type, bool quest);
 
@@ -992,6 +994,11 @@ struct hCSData {
 	unsigned int price;
 };
 
+struct cdelayed_damage {
+	struct packet_damage p;
+	struct block_list bl;
+};
+
 /* Cash Shop [Ind] */
 	struct {
 		struct hCSData **data[CASHSHOP_TAB_MAX];
@@ -1029,10 +1036,13 @@ struct clif_interface {
 	/* */
 	bool ally_only;
 	/* */
+	struct eri *delayed_damage_ers;
+	/* */
 	unsigned short (*parse_cmd) ( int fd, struct map_session_data *sd );
 	unsigned short (*decrypt_cmd) ( int cmd, struct map_session_data *sd );
 	void (*cooldown_list) (int fd, struct skill_cd* cd);
 	void (*package_announce) (struct map_session_data *sd, unsigned short nameid, unsigned short containerid);
+	void (*item_drop_announce) (struct map_session_data *sd, unsigned short nameid, char *monsterName);
 	/* Outros */
 	void (*bc_ready) (void);
 	void (*addcards2) (unsigned short *cards, struct item* item);
@@ -1075,6 +1085,9 @@ struct clif_interface {
 	/* */
 	void (*notify_bounditem) (struct map_session_data *sd, unsigned short index);
 	void (*messages) (const int fd, const char* mes, ...);
+	/* */
+	int (*delay_damage) (int64 tick, struct block_list *src, struct block_list *dst, int sdelay, int ddelay, int64 in_damage, short div, unsigned char type);
+	int (*delay_damage_sub) (int tid, int64 tick, int id, intptr_t data);
 	/* Pacote de Entrada */
 	void (*pWantToConnection) (int fd, struct map_session_data *sd);
 	void (*pLoadEndAck) (int fd,struct map_session_data *sd);

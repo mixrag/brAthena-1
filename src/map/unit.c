@@ -2036,14 +2036,14 @@ int unit_counttargeted(struct block_list *bl)
 /*==========================================
  *
  *------------------------------------------*/
-int unit_fixdamage(struct block_list *src,struct block_list *target,int64 tick,int sdelay,int ddelay,int64 damage,int div,int type,int64 damage2)
+int unit_fixdamage(struct block_list *src,struct block_list *target, int sdelay,int ddelay,int64 damage, short div, unsigned char type, int64 damage2)
 {
 	nullpo_ret(target);
 
 	if(damage+damage2 <= 0)
 		return 0;
 
-	return status_fix_damage(src,target,damage+damage2,clif_damage(target,target,tick,sdelay,ddelay,damage,div,type,damage2));
+	return status_fix_damage(src,target,damage+damage2,clif_damage(target,target,sdelay,ddelay,damage,div,type,damage2));
 }
 
 /*==========================================
@@ -2215,7 +2215,7 @@ int unit_remove_map(struct block_list *bl, clr_type clrtype, const char *file, i
 					--map[bl->m].users_pvp;
 				}
 				if(map[bl->m].instance_id >= 0) {
-					instances[map[bl->m].instance_id].users--;
+					instance->list[map[bl->m].instance_id].users--;
 					instance->check_idle(map[bl->m].instance_id);
 				}
 				if(sd->state.hpmeter_visible) {
@@ -2375,7 +2375,6 @@ int unit_free(struct block_list *bl, clr_type clrtype)
 					sd->reg_num = 0;
 				}
 				if(sd->regstr) {
-					int i;
 					for(i = 0; i < sd->regstr_num; ++i)
 						if(sd->regstr[i].data)
 							aFree(sd->regstr[i].data);
@@ -2411,6 +2410,11 @@ int unit_free(struct block_list *bl, clr_type clrtype)
 			if(sd->queues != NULL) {
 				aFree(sd->queues);
 				sd->queues = NULL;
+			}
+			if( sd->quest_log != NULL ) {
+				aFree(sd->quest_log);
+				sd->quest_log = NULL;
+				sd->num_quests = sd->avail_quests = 0;
 			}
 			break;
 			}
