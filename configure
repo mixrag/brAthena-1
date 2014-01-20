@@ -687,12 +687,17 @@ ac_user_opts='
 enable_option_checking
 enable_manager
 enable_packetver
+enable_packetver_re
+with_key1
+with_key2
+with_key3
 enable_debug
 enable_buildbot
 enable_rdtsc
 enable_profiler
 enable_64bit
 enable_lto
+enable_renewal
 with_maxconn
 with_mysql
 with_MYSQL_CFLAGS
@@ -1318,8 +1323,9 @@ Optional Features:
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --enable-manager=ARG    memory managers: no, builtin, memwatch, dmalloc,
                           gcollect, bcheck (defaults to builtin)
-  --enable-packetver=ARG  Sets the PACKETVER define of the map-server. (see
-                          src/map/clif.h)
+  --enable-packetver=ARG  Sets the PACKETVER define. (see src/common/mmo.h)
+  --disable-packetver-re  Sets or unsets the PACKETVER_RE define - see
+                          src/common/mmo.h (currently enabled by default)
   --enable-debug[=ARG]    Compiles extra debug code. (disabled by default)
                           (available options: yes, no, gdb)
   --enable-buildbot[=ARG] (available options: yes, no)
@@ -1328,17 +1334,31 @@ Optional Features:
                           in conjunction with XEN or Other Virtualization
                           mechanisms) Note: Please ensure that you've disabled
                           dynamic CPU-Frequencys, such as power saving
-                          options. (On the most modern Dedicated Servers
-                          cpufreq is preconfigured, see your distribution's
-                          manual how to disable it)
+                          options. (On most modern Dedicated Servers cpufreq
+                          is preconfigured, see your distribution's manual how
+                          to disable it). Furthermore, If your CPU has
+                          built-in CPU-Frequency scaling features (such as
+                          Intel's SpeedStep(R)), do not enable this option.
+                          Recent CPUs (Intel Core or newer) guarantee a fixed
+                          increment rate for their TSC, so it should be safe
+                          to use, but please doublecheck the documentation of
+                          both your CPU and OS before enabling this option.
   --enable-profiler=ARG   Profilers: no, gprof (disabled by default)
   --disable-64bit         Enforce 32bit output on x86_64 systems.
   --enable-lto            Enables or Disables Linktime Code Optimization (LTO
                           is enabled by default)
+  --disable-renewal       Disable Ragnarok Renewal support (override settings
+                          in src/config/renewal.h)
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+  --with-key1[=ARG]       Set the first obfuscation key (ignored unless the
+                          other two are also specified)
+  --with-key2[=ARG]       Set the second obfuscation key (ignored unless the
+                          other two are also specified)
+  --with-key3[=ARG]       Set the third obfuscation key (ignored unless the
+                          other two are also specified)
   --with-maxconn[=ARG]    optionally set the maximum connections the core can
                           handle (default: 16384) NOT USED YET - EXPERIMENTAL
   --with-mysql[=ARG]      optionally specify the path to the mysql_config
@@ -3444,6 +3464,79 @@ fi
 
 
 #
+# packetver-RE
+#
+# Check whether --enable-packetver-re was given.
+if test "${enable_packetver_re+set}" = set; then :
+  enableval=$enable_packetver_re;
+		enable_packetver_re="$enableval"
+		case $enableval in
+			"no");;
+			"yes");;
+			*) as_fn_error $? "invalid argument --enable-packetver-re=$enableval... stopping" "$LINENO" 5;;
+		esac
+
+else
+  enable_packetver_re="yes"
+
+fi
+
+
+
+#
+# Obfuscation keys
+#
+
+# Check whether --with-key1 was given.
+if test "${with_key1+set}" = set; then :
+  withval=$with_key1;
+		obfuscationkey1="$( expr "0x$withval" : '0*x*\(0x[A-Fa-f0-9]\{8\}\)' )"
+		if ! expr "x$obfuscationkey1" : 'x0x[A-Fa-f0-9]\{8\}' >/dev/null 2>&1; then
+			obfuscationkey1=""
+		fi
+
+else
+
+		obfuscationkey1=""
+
+
+fi
+
+
+# Check whether --with-key2 was given.
+if test "${with_key2+set}" = set; then :
+  withval=$with_key2;
+		obfuscationkey2="$( expr "0x$withval" : '0*x*\(0x[A-Fa-f0-9]\{8\}\)' )"
+		if ! expr "x$obfuscationkey2" : 'x0x[A-Fa-f0-9]\{8\}' >/dev/null 2>&1; then
+			obfuscationkey2=""
+		fi
+
+else
+
+		obfuscationkey2=""
+
+
+fi
+
+
+# Check whether --with-key3 was given.
+if test "${with_key3+set}" = set; then :
+  withval=$with_key3;
+		obfuscationkey3="$( expr "0x$withval" : '0*x*\(0x[A-Fa-f0-9]\{8\}\)' )"
+		if ! expr "x$obfuscationkey3" : 'x0x[A-Fa-f0-9]\{8\}' >/dev/null 2>&1; then
+			obfuscationkey3=""
+		fi
+
+else
+
+		obfuscationkey3=""
+
+
+fi
+
+
+
+#
 # debug
 #
 # Check whether --enable-debug was given.
@@ -3551,6 +3644,26 @@ if test "${enable_lto+set}" = set; then :
 
 else
   enable_lto="yes"
+
+fi
+
+
+
+#
+# Renewal
+#
+# Check whether --enable-renewal was given.
+if test "${enable_renewal+set}" = set; then :
+  enableval=$enable_renewal;
+		enable_renewal="$enableval"
+		case $enableval in
+			"no");;
+			"yes");;
+			*) as_fn_error $? "invalid argument --enable-renewal=$enableval... stopping" "$LINENO" 5;;
+		esac
+
+else
+  enable_renewal="yes"
 
 fi
 
@@ -4445,7 +4558,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
-CFLAGS="$CFLAGS -pipe -ffast-math -Wall -Wno-sign-compare"
+CFLAGS="$CFLAGS -pipe -ffast-math -Wall -Wextra -Wno-sign-compare"
 CPPFLAGS="$CPPFLAGS -I../common"
 
 
@@ -4803,28 +4916,6 @@ fi
 
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-unused-parameter" >&5
-$as_echo_n "checking whether $CC supports -Wno-unused-parameter... " >&6; }
-OLD_CFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS -Wno-unused-parameter"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-int foo;
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-$as_echo "yes" >&6; }
-else
-
-		{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
-$as_echo "no" >&6; }
-		CFLAGS="$OLD_CFLAGS"
-
-
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-
-
 #
 # LTO Support test
 #
@@ -4849,8 +4940,8 @@ else
 /* end confdefs.h.  */
 
 			int main(int argc, char **argv){
-               return 0;
-           }
+				return 0;
+			}
 
 _ACEOF
 if ac_fn_c_try_run "$LINENO"; then :
@@ -4874,32 +4965,85 @@ fi
 
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-pointer-sign" >&5
-$as_echo_n "checking whether $CC supports -Wno-pointer-sign... " >&6; }
-OLD_CFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS -Wno-pointer-sign"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-int foo;
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
 
-		{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-$as_echo "yes" >&6; }
-		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wno-pointer-sign" >&5
-$as_echo_n "checking whether $CC can actually use -Wno-pointer-sign... " >&6; }
-		# This option causes warnings in C++ mode
-		# Note: -Werror must be before -Wno-pointer-sign, otherwise it does not do anything
-		CFLAGS="$OLD_CFLAGS -Werror -Wno-pointer-sign"
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-unused-parameter" >&5
+$as_echo_n "checking whether $CC supports -Wno-unused-parameter... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wno-unused-parameter"
 		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int foo;
 _ACEOF
 if ac_fn_c_try_compile "$LINENO"; then :
 
-				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+				# Recent versions of gcc don't fail if -Wno-foo is not recognized
+				# (unless there are also other warnings), so we also check for -Wfoo
+				# which always fails if not supported
+				CFLAGS="$OLD_CFLAGS -Werror -Wunused-parameter"
+				cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
-				CFLAGS="$OLD_CFLAGS -Wno-pointer-sign"
+						CFLAGS="$OLD_CFLAGS -Wno-unused-parameter"
+						# Optionally, run a test
+						if test "xint foo(int bar) { return 0; }" != "x"; then
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wno-unused-parameter" >&5
+$as_echo_n "checking whether $CC can actually use -Wno-unused-parameter... " >&6; }
+							CFLAGS="$OLD_CFLAGS -Werror -Wunused-parameter"
+							cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo(int bar) { return 0; }
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+									{ $as_echo "$as_me:${as_lineno-$LINENO}: result: not needed but enabled" >&5
+$as_echo "not needed but enabled" >&6; }
+									CFLAGS="$OLD_CFLAGS"
+
+else
+
+									CFLAGS="$OLD_CFLAGS -Werror -Wno-unused-parameter"
+									cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo(int bar) { return 0; }
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+											CFLAGS="$OLD_CFLAGS -Wno-unused-parameter"
+
+else
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+											CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+						fi
+
+else
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+						CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 
 else
 
@@ -4911,38 +5055,789 @@ $as_echo "no" >&6; }
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 
-else
-
-		{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
-$as_echo "no" >&6; }
-		CFLAGS="$OLD_CFLAGS"
 
 
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-switch" >&5
-$as_echo_n "checking whether $CC supports -Wno-switch... " >&6; }
-OLD_CFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS -Wno-switch"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-maybe-uninitialized" >&5
+$as_echo_n "checking whether $CC supports -Wno-maybe-uninitialized... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wno-maybe-uninitialized"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 int foo;
 _ACEOF
 if ac_fn_c_try_compile "$LINENO"; then :
-  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+
+				# Recent versions of gcc don't fail if -Wno-foo is not recognized
+				# (unless there are also other warnings), so we also check for -Wfoo
+				# which always fails if not supported
+				CFLAGS="$OLD_CFLAGS -Werror -Wmaybe-uninitialized"
+				cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
+						CFLAGS="$OLD_CFLAGS -Wno-maybe-uninitialized"
+						# Optionally, run a test
+						if test "x" != "x"; then
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wno-maybe-uninitialized" >&5
+$as_echo_n "checking whether $CC can actually use -Wno-maybe-uninitialized... " >&6; }
+							CFLAGS="$OLD_CFLAGS -Werror -Wmaybe-uninitialized"
+							cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+									{ $as_echo "$as_me:${as_lineno-$LINENO}: result: not needed but enabled" >&5
+$as_echo "not needed but enabled" >&6; }
+									CFLAGS="$OLD_CFLAGS"
+
 else
 
-		{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+									CFLAGS="$OLD_CFLAGS -Werror -Wno-maybe-uninitialized"
+									cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+											CFLAGS="$OLD_CFLAGS -Wno-maybe-uninitialized"
+
+else
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
-		CFLAGS="$OLD_CFLAGS"
+											CFLAGS="$OLD_CFLAGS"
 
 
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
 
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+						fi
+
+else
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+						CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-clobbered" >&5
+$as_echo_n "checking whether $CC supports -Wno-clobbered... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wno-clobbered"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				# Recent versions of gcc don't fail if -Wno-foo is not recognized
+				# (unless there are also other warnings), so we also check for -Wfoo
+				# which always fails if not supported
+				CFLAGS="$OLD_CFLAGS -Werror -Wclobbered"
+				cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+						CFLAGS="$OLD_CFLAGS -Wno-clobbered"
+						# Optionally, run a test
+						if test "x" != "x"; then
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wno-clobbered" >&5
+$as_echo_n "checking whether $CC can actually use -Wno-clobbered... " >&6; }
+							CFLAGS="$OLD_CFLAGS -Werror -Wclobbered"
+							cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+									{ $as_echo "$as_me:${as_lineno-$LINENO}: result: not needed but enabled" >&5
+$as_echo "not needed but enabled" >&6; }
+									CFLAGS="$OLD_CFLAGS"
+
+else
+
+									CFLAGS="$OLD_CFLAGS -Werror -Wno-clobbered"
+									cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+											CFLAGS="$OLD_CFLAGS -Wno-clobbered"
+
+else
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+											CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+						fi
+
+else
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+						CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wempty-body" >&5
+$as_echo_n "checking whether $CC supports -Wempty-body... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wempty-body"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wempty-body"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wempty-body" >&5
+$as_echo_n "checking whether $CC can actually use -Wempty-body... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wempty-body"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wempty-body"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wnewline-eof" >&5
+$as_echo_n "checking whether $CC supports -Wnewline-eof... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wnewline-eof"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wnewline-eof"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wnewline-eof" >&5
+$as_echo_n "checking whether $CC can actually use -Wnewline-eof... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wnewline-eof"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wnewline-eof"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wint-conversion" >&5
+$as_echo_n "checking whether $CC supports -Wint-conversion... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wint-conversion"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wint-conversion"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wint-conversion" >&5
+$as_echo_n "checking whether $CC can actually use -Wint-conversion... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wint-conversion"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wint-conversion"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wenum-conversion" >&5
+$as_echo_n "checking whether $CC supports -Wenum-conversion... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wenum-conversion"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wenum-conversion"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wenum-conversion" >&5
+$as_echo_n "checking whether $CC can actually use -Wenum-conversion... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wenum-conversion"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wenum-conversion"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wshorten-64-to-32" >&5
+$as_echo_n "checking whether $CC supports -Wshorten-64-to-32... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wshorten-64-to-32"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wshorten-64-to-32"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wshorten-64-to-32" >&5
+$as_echo_n "checking whether $CC can actually use -Wshorten-64-to-32... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wshorten-64-to-32"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wshorten-64-to-32"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wconstant-conversion" >&5
+$as_echo_n "checking whether $CC supports -Wconstant-conversion... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wconstant-conversion"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wconstant-conversion"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wconstant-conversion" >&5
+$as_echo_n "checking whether $CC can actually use -Wconstant-conversion... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wconstant-conversion"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wconstant-conversion"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wbool-conversion" >&5
+$as_echo_n "checking whether $CC supports -Wbool-conversion... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wbool-conversion"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wbool-conversion"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wbool-conversion" >&5
+$as_echo_n "checking whether $CC can actually use -Wbool-conversion... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wbool-conversion"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wbool-conversion"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-switch" >&5
+$as_echo_n "checking whether $CC supports -Wno-switch... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wno-switch"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				# Recent versions of gcc don't fail if -Wno-foo is not recognized
+				# (unless there are also other warnings), so we also check for -Wfoo
+				# which always fails if not supported
+				CFLAGS="$OLD_CFLAGS -Werror -Wswitch"
+				cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+						CFLAGS="$OLD_CFLAGS -Wno-switch"
+						# Optionally, run a test
+						if test "x" != "x"; then
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wno-switch" >&5
+$as_echo_n "checking whether $CC can actually use -Wno-switch... " >&6; }
+							CFLAGS="$OLD_CFLAGS -Werror -Wswitch"
+							cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+									{ $as_echo "$as_me:${as_lineno-$LINENO}: result: not needed but enabled" >&5
+$as_echo "not needed but enabled" >&6; }
+									CFLAGS="$OLD_CFLAGS"
+
+else
+
+									CFLAGS="$OLD_CFLAGS -Werror -Wno-switch"
+									cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+											CFLAGS="$OLD_CFLAGS -Wno-switch"
+
+else
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+											CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+						fi
+
+else
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+						CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wno-missing-field-initializers" >&5
+$as_echo_n "checking whether $CC supports -Wno-missing-field-initializers... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wno-missing-field-initializers"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				# Recent versions of gcc don't fail if -Wno-foo is not recognized
+				# (unless there are also other warnings), so we also check for -Wfoo
+				# which always fails if not supported
+				CFLAGS="$OLD_CFLAGS -Werror -Wmissing-field-initializers"
+				cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+						CFLAGS="$OLD_CFLAGS -Wno-missing-field-initializers"
+						# Optionally, run a test
+						if test "x" != "x"; then
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wno-missing-field-initializers" >&5
+$as_echo_n "checking whether $CC can actually use -Wno-missing-field-initializers... " >&6; }
+							CFLAGS="$OLD_CFLAGS -Werror -Wmissing-field-initializers"
+							cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+									{ $as_echo "$as_me:${as_lineno-$LINENO}: result: not needed but enabled" >&5
+$as_echo "not needed but enabled" >&6; }
+									CFLAGS="$OLD_CFLAGS"
+
+else
+
+									CFLAGS="$OLD_CFLAGS -Werror -Wno-missing-field-initializers"
+									cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+											CFLAGS="$OLD_CFLAGS -Wno-missing-field-initializers"
+
+else
+
+											{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+											CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+						fi
+
+else
+
+						{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+						CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+
+# Certain versions of gcc make -Wshadow completely useless by making it flood
+# you with unnecessary warnings <https://lkml.org/lkml/2006/11/28/239>
+# Let's check if we can really use it
+SAVED_OLD_CFLAGS="$CFLAGS"
+
+		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -Wshadow" >&5
+$as_echo_n "checking whether $CC supports -Wshadow... " >&6; }
+		OLD_CFLAGS="$CFLAGS"
+		CFLAGS="$CFLAGS -Werror -Wshadow"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int foo;
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+				CFLAGS="$OLD_CFLAGS -Wshadow"
+				# Optionally, run a test
+				if test "x" != "x"; then
+					{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can actually use -Wshadow" >&5
+$as_echo_n "checking whether $CC can actually use -Wshadow... " >&6; }
+					CFLAGS="$OLD_CFLAGS -Werror -Wshadow"
+					cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+							CFLAGS="$OLD_CFLAGS"
+
+
+							{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+							CFLAGS="$OLD_CFLAGS -Wshadow"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+				fi
+
+else
+
+				{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+				CFLAGS="$OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+
+if test "x$CFLAGS" != "x$SAVED_OLD_CFLAGS"; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC can efficiently use -Wshadow" >&5
+$as_echo_n "checking whether $CC can efficiently use -Wshadow... " >&6; }
+	NEW_CFLAGS="$CFLAGS"
+	CFLAGS="$CFLAGS -Werror -Wshadow"
+	cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+			int foo(void) {
+				return 0;
+			}
+			int bar(void) {
+				int foo = 0;
+				return foo + 1;
+			}
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+			{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+			CFLAGS="$NEW_CFLAGS"
+
+else
+
+			{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+			CFLAGS="$SAVED_OLD_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC supports -fPIC" >&5
 $as_echo_n "checking whether $CC supports -fPIC... " >&6; }
@@ -5124,6 +6019,24 @@ if test -n "$enable_packetver" ; then
 	CFLAGS="$CFLAGS -DPACKETVER=$enable_packetver"
 fi
 
+#
+# Packetver-RE
+#
+case $enable_packetver_re in
+	"yes")
+		# default value
+		CFLAGS="$CFLAGS -DDISABLE_PACKETVER_RE"
+		;;
+	"no")
+		;;
+esac
+
+#
+# Obfuscation keys
+#
+if test -n "$obfuscationkey1" -a -n "$obfuscationkey2" -a -n "$obfuscationkey3"; then
+	CFLAGS="$CFLAGS -DOBFUSCATIONKEY1=$obfuscationkey1 -DOBFUSCATIONKEY2=$obfuscationkey2 -DOBFUSCATIONKEY3=$obfuscationkey3"
+fi
 
 #
 # Debug
@@ -5131,7 +6044,7 @@ fi
 case $enable_debug in
 	"no")
 		# default value
-		CFLAGS="$CFLAGS -Wno-unused -Wno-parentheses"
+#		CFLAGS="$CFLAGS -Wno-unused -Wno-parentheses"
 		;;
 	"yes")
 		CFLAGS="$CFLAGS -g -DDEBUG"
@@ -5179,6 +6092,17 @@ case $enable_profiler in
 		;;
 esac
 
+#
+# Renewal
+#
+case $enable_renewal in
+	"no")
+		CFLAGS="$CFLAGS -DDISABLE_RENEWAL"
+		;;
+	"yes")
+		# default value
+		;;
+esac
 
 #
 # zlib library (required)
@@ -6047,7 +6971,7 @@ esac
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for MinGW" >&5
 $as_echo_n "checking for MinGW... " >&6; }
-if test -n "`$CC --version | grep -i mingw`" ; then
+if test -n "`$CC --version 2>/dev/null | grep -i mingw`" ; then
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
 	CPPFLAGS="$CPPFLAGS -DMINGW"

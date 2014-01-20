@@ -263,7 +263,7 @@ int elemental_data_received(struct s_elemental *ele, bool flag)
 	if(!sd->ed) {    // Initialize it after first summon.
 		sd->ed = ed = (struct elemental_data *)aCalloc(1,sizeof(struct elemental_data));
 		ed->bl.type = BL_ELEM;
-		ed->bl.id = npc_get_new_npc_id();
+		ed->bl.id = npc->get_new_npc_id();
 		ed->master = sd;
 		ed->db = db;
 		memcpy(&ed->elemental, ele, sizeof(struct s_elemental));
@@ -808,7 +808,7 @@ int read_elementaldb(void)
 		return -1;
 	}
 
-	while(SQL_SUCCESS == Sql_NextRow(dbmysql_handle) && count < MAX_ELEMENTAL_CLASS) {
+	while (SQL_SUCCESS == Sql_NextRow(dbmysql_handle) && count < MAX_ELEMENTAL_CLASS) {
 		char *row[26];
 		int i;
 

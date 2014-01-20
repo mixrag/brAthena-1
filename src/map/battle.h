@@ -447,6 +447,7 @@ extern struct Battle_Config {
 	int cashshop_show_points;
 	int mail_show_status;
 	int client_limit_unit_lv;
+	int emblem_transparency_limit;
 	int hom_max_level;
 	int hom_S_max_level;
 
@@ -464,6 +465,7 @@ extern struct Battle_Config {
 	int supports_castle_gvg;
 	int max_atk;
 	int hanbok_ignorepalette;
+	int oktoberfest_ignorepalette;
 	int edp_rate;
 	int walk_speed_default;
 	int official_rates;
@@ -486,6 +488,7 @@ extern struct Battle_Config {
 	int atcommand_mobinfo_type;
 
 	int mob_size_influence; // Enable modifications on earned experience, drop rates and monster status depending on monster size. [mkbu95]
+
 	int skill_trap_type;
 	int skill_trap_type_ot;
 	int item_restricted_consumption_type;
@@ -506,7 +509,8 @@ extern struct Battle_Config {
 	int feature_auction;
 
 	int mon_trans_disable_in_gvg;
-	int emblem_transparency_limit;
+
+	int case_sensitive_aegisnames;
 } battle_config;
 
 /* criteria for battle_config.idletime_critera */
@@ -590,7 +594,7 @@ int battle_gettarget(struct block_list *bl);
 int battle_getcurrentskill(struct block_list *bl);
 
 
-int battle_check_undead(int race,int element);
+bool battle_check_undead(int race,int element);
 int battle_check_target(struct block_list *src, struct block_list *target,int flag);
 bool battle_check_range(struct block_list *src,struct block_list *bl,int range);
 

@@ -82,7 +82,7 @@ struct unit_data *unit_bl2ud(struct block_list *bl) {
  * @return a pointer to the given object's unit_data
  */
 struct unit_data *unit_bl2ud2(struct block_list *bl) {
-	if(bl && bl->type == BL_NPC && ((struct npc_data*)bl)->ud == &npc_base_ud) {
+	if(bl && bl->type == BL_NPC && ((struct npc_data*)bl)->ud == &npc->base_ud) {
 		struct npc_data *nd = (struct npc_data *)bl;
 		nd->ud = NULL;
 		CREATE(nd->ud, struct unit_data, 1);
@@ -206,9 +206,9 @@ int unit_walktoxy_timer(int tid, int64 tick, int id, intptr_t data)
 
 	if(sd) {
 		if(sd->touching_id)
-			npc_touchnext_areanpc(sd,false);
+			npc->touchnext_areanpc(sd,false);
 		if(map_getcell(bl->m,x,y,CELL_CHKNPC)) {
-			npc_touch_areanpc(sd,bl->m,x,y);
+			npc->touch_areanpc(sd,bl->m,x,y);
 			if(bl->prev == NULL)  //Script could have warped char, abort remaining of the function.
 				return 0;
 		} else
@@ -239,7 +239,7 @@ int unit_walktoxy_timer(int tid, int64 tick, int id, intptr_t data)
 		}
 	} else if(md) {
 		if(map_getcell(bl->m,x,y,CELL_CHKNPC)) {
-			if(npc_touch_areanpc2(md)) return 0;   // Warped
+			if(npc->touch_areanpc2(md)) return 0;   // Warped
 		} else
 			md->areanpc_id = 0;
 		if(md->min_chase > md->db->range3) md->min_chase--;
@@ -677,9 +677,9 @@ int unit_movepos(struct block_list *bl, short dst_x, short dst_y, int easy, bool
 
 	if(sd) {
 		if(sd->touching_id)
-			npc_touchnext_areanpc(sd,false);
+			npc->touchnext_areanpc(sd,false);
 		if(map_getcell(bl->m,bl->x,bl->y,CELL_CHKNPC)) {
-			npc_touch_areanpc(sd,bl->m,bl->x,bl->y);
+			npc->touch_areanpc(sd,bl->m,bl->x,bl->y);
 			if(bl->prev == NULL)  //Script could have warped char, abort remaining of the function.
 				return 0;
 		} else
@@ -688,14 +688,14 @@ int unit_movepos(struct block_list *bl, short dst_x, short dst_y, int easy, bool
 		if(sd->status.pet_id > 0 && sd->pd && sd->pd->pet.intimate > 0) {
 			// Check if pet needs to be teleported. [Skotlex]
 			int flag = 0;
-			struct block_list *bl = &sd->pd->bl;
-			if(!checkpath && !path_search(NULL,bl->m,bl->x,bl->y,dst_x,dst_y,0,CELL_CHKNOPASS))
+			struct block_list *pbl = &sd->pd->bl;
+			if(!checkpath && !path_search(NULL,pbl->m,pbl->x,pbl->y,dst_x,dst_y,0,CELL_CHKNOPASS))
 				flag = 1;
-			else if(!check_distance_bl(&sd->bl, bl, AREA_SIZE))  //Too far, teleport.
+			else if(!check_distance_bl(&sd->bl, pbl, AREA_SIZE))  //Too far, teleport.
 				flag = 2;
 			if(flag) {
-				unit_movepos(bl,sd->bl.x,sd->bl.y, 0, 0);
-				clif_slide(bl,bl->x,bl->y);
+				unit_movepos(pbl,sd->bl.x,sd->bl.y, 0, 0);
+				clif_slide(pbl,pbl->x,pbl->y);
 			}
 		}
 	}
@@ -738,6 +738,8 @@ int unit_blown(struct block_list *bl, int dx, int dy, int count, int flag)
 		struct skill_unit *su = NULL;
 		int nx, ny, result;
 
+		nullpo_ret(bl);
+
 		sd = BL_CAST(BL_PC, bl);
 		su = BL_CAST(BL_SKILL, bl);
 
@@ -775,10 +777,10 @@ int unit_blown(struct block_list *bl, int dx, int dy, int count, int flag)
 
 			if(sd) {
 				if(sd->touching_id) {
-					npc_touchnext_areanpc(sd, false);
+					npc->touchnext_areanpc(sd, false);
 				}
 				if(map_getcell(bl->m, bl->x, bl->y, CELL_CHKNPC)) {
-					npc_touch_areanpc(sd, bl->m, bl->x, bl->y);
+					npc->touch_areanpc(sd, bl->m, bl->x, bl->y);
 				} else {
 					sd->areanpc_id = 0;
 				}
@@ -1647,7 +1649,7 @@ int unit_attack(struct block_list *src,int target_id,int continuous)
 	if(src->type == BL_PC) {
 		TBL_PC *sd = (TBL_PC *)src;
 		if(target->type == BL_NPC) {   // monster npcs [Valaris]
-			npc_click(sd,(TBL_NPC *)target); // submitted by leinsirk10 [Celest]
+			npc->click(sd,(TBL_NPC *)target); // submitted by leinsirk10 [Celest]
 			return 0;
 		}
 		if(pc_is90overweight(sd) || pc_isridingwug(sd)) {   // overweight or mounted on warg - stop attacking
@@ -2152,20 +2154,20 @@ int unit_remove_map(struct block_list *bl, clr_type clrtype, const char *file, i
 				buyingstore_close(sd);
 				searchstore_close(sd);
 				if(sd->state.storage_flag == 1)
-					storage_storage_quit(sd,0);
+					storage->pc_quit(sd, 0);
 				else if(sd->state.storage_flag == 2)
-					storage_guild_storage_quit(sd,0);
+					gstorage->pc_quit(sd, 0);
 				sd->state.storage_flag = 0; //Force close it when being warped.
 				if(sd->party_invite>0)
 					party_reply_invite(sd,sd->party_invite,0);
 				if(sd->guild_invite>0)
-					guild_reply_invite(sd,sd->guild_invite,0);
+					guild->reply_invite(sd, sd->guild_invite, 0);
 				if(sd->guild_alliance>0)
-					guild_reply_reqalliance(sd,sd->guild_alliance_account,0);
+					guild->reply_reqalliance(sd, sd->guild_alliance_account, 0);
 				if(sd->menuskill_id)
 					sd->menuskill_id = sd->menuskill_val = 0;
 				if(sd->touching_id)
-					npc_touchnext_areanpc(sd,true);
+					npc->touchnext_areanpc(sd,true);
 
 				// Check if warping and not changing the map.
 				if(sd->state.warping && !sd->state.changemap) {
@@ -2189,7 +2191,7 @@ int unit_remove_map(struct block_list *bl, clr_type clrtype, const char *file, i
 					skill_sit(sd,0);
 				}
 				party_send_dot_remove(sd);//minimap dot fix [Kevin]
-				guild_send_dot_remove(sd);
+				guild->send_dot_remove(sd);
 				bg_send_dot_remove(sd);
 
 				if(map[bl->m].users <= 0 || sd->state.debug_remove_map) {
@@ -2362,28 +2364,21 @@ int unit_free(struct block_list *bl, clr_type clrtype)
 				// Notify friends that this char logged out. [Skotlex]
 				map_foreachpc(clif_friendslist_toggle_sub, sd->status.account_id, sd->status.char_id, 0);
 				party_send_logout(sd);
-				guild_send_memberinfoshort(sd,0);
+				guild->send_memberinfoshort(sd, 0);
 				pc_cleareventtimer(sd);
 				pc_inventory_rental_clear(sd);
 				pc_delspiritball(sd,sd->spiritball,1);
 				for(i = 1; i < 5; i++)
 					pc_del_charm(sd, sd->charm[i], i);
 
-				if(sd->reg) {    //Double logout already freed pointer fix... [Skotlex]
-					aFree(sd->reg);
-					sd->reg = NULL;
-					sd->reg_num = 0;
-				}
-				if(sd->regstr) {
-					for(i = 0; i < sd->regstr_num; ++i)
-						if(sd->regstr[i].data)
-							aFree(sd->regstr[i].data);
-					aFree(sd->regstr);
-					sd->regstr = NULL;
-					sd->regstr_num = 0;
-				}
+				if(sd->var_db)
+					sd->var_db->destroy(sd->var_db,script->reg_destroy);
+
+				if(sd->array_db)
+					sd->array_db->destroy(sd->array_db,script->array_free_db);
+
 				if(sd->st && sd->st->state != RUN) {  // free attached scripts that are waiting
-					script_free_state(sd->st);
+					script->free_state(sd->st);
 					sd->st = NULL;
 					sd->npc_id = 0;
 				}

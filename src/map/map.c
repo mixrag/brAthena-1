@@ -105,16 +105,6 @@ char *MSG_CONF_NAME;
 char *LANG_FILENAME;
 char *GRF_PATH_FILENAME;
 
-// DBMap declaration
-static DBMap *id_db=NULL; // int id -> struct block_list*
-static DBMap *pc_db=NULL; // int id -> struct map_session_data*
-static DBMap *mobid_db=NULL; // int id -> struct mob_data*
-static DBMap *bossid_db=NULL; // int id -> struct mob_data* (MVP db)
-static DBMap *map_db=NULL; // unsigned int mapindex -> struct map_data_other_server*
-static DBMap *nick_db=NULL; // int char_id -> struct charid2nick* (requested names of offline characters)
-static DBMap *charid_db=NULL; // int char_id -> struct map_session_data*
-static DBMap *regen_db=NULL; // int id -> struct block_list* (status_natural_heal processing)
-
 static int map_users=0;
 
 // brAthena
@@ -421,7 +411,7 @@ int map_moveblock(struct block_list *bl, int x1, int y1, int64 tick)
 		   sc->data[SC_PROPERTYWALK]->val3 >= skill_get_maxcount(sc->data[SC_PROPERTYWALK]->val1,sc->data[SC_PROPERTYWALK]->val2))
 			status_change_end(bl,SC_PROPERTYWALK,INVALID_TIMER);
 	} else if(bl->type == BL_NPC)
-		npc_unsetcells((TBL_NPC *)bl);
+		npc->unsetcells((TBL_NPC *)bl);
 
 	if(moveblock) map_delblock(bl);
 #ifdef CELL_NOSTACK
@@ -492,7 +482,7 @@ int map_moveblock(struct block_list *bl, int x1, int y1, int64 tick)
 			}
 		}
 	} else if(bl->type == BL_NPC)
-		npc_setcells((TBL_NPC *)bl);
+		npc->setcells((TBL_NPC *)bl);
 
 	return 0;
 }
@@ -1436,7 +1426,7 @@ static DBData create_charid2nick(DBKey key, va_list args)
 {
 	struct charid2nick *p;
 	CREATE(p, struct charid2nick, 1);
-	return db_ptr2data(p);
+	return DB->ptr2data(p);
 }
 
 /// Adds(or replaces) the nick of charid to nick_db and fullfils pending requests.
@@ -1472,7 +1462,7 @@ void map_delnickdb(int charid, const char *name)
 	struct map_session_data *sd;
 	DBData data;
 
-	if(!nick_db->remove(nick_db, db_i2key(charid), &data) || (p = db_data2ptr(&data)) == NULL)
+	if(!nick_db->remove(nick_db, DB->i2key(charid), &data) || (p = DB->data2ptr(&data)) == NULL)
 		return;
 
 	while(p->requests) {
@@ -1583,13 +1573,16 @@ int map_quit(struct map_session_data *sd)
 		delete_timer(sd->expiration_tid,pc_expiration_timer);
 
 	if(sd->npc_timer_id != INVALID_TIMER)  //Cancel the event timer.
-		npc_timerevent_quit(sd);
+		npc->timerevent_quit(sd);
 
 	if(sd->npc_id)
-		npc_event_dequeue(sd);
+		npc->event_dequeue(sd);
 
 	if(sd->bg_id && !sd->bg_queue.arena) /* TODO: dump this chunk after bg_queue is fully enabled */
 		bg_team_leave(sd,1);
+
+	if(sd->state.autotrade && runflag != MAPSERVER_ST_SHUTDOWN && !raChSys.closing)
+		pc_autotrade_update(sd,PAUC_REMOVE);
 
 	skill_cooldown_save(sd);
 	pc_itemcd_do(sd,false);
@@ -1597,7 +1590,7 @@ int map_quit(struct map_session_data *sd)
 	for(i = 0; i < sd->queues_count; i++) {
 		struct hQueue *queue;
 		if((queue = script->queue(sd->queues[i])) && queue->onLogOut[0] != '\0') {
-			npc_event(sd, queue->onLogOut, 0);
+			npc->event(sd, queue->onLogOut, 0);
 		}
 	}
 	/* two times, the npc event above may assign a new one or delete others */
@@ -1606,7 +1599,7 @@ int map_quit(struct map_session_data *sd)
 			script->queue_remove(sd->queues[i],sd->status.account_id);
 	}
 	
-	npc_script_event(sd, NPCE_LOGOUT);
+	npc->script_event(sd, NPCE_LOGOUT);
 
 	//Unit_free handles clearing the player related data,
 	//map_quit handles extra specific data which is related to quitting normally
@@ -1670,7 +1663,7 @@ int map_quit(struct map_session_data *sd)
 	}
 
 	if(sd->state.vending) {
-		idb_remove(vending_getdb(), sd->status.char_id);
+		idb_remove(vending->db, sd->status.char_id);
 	}
 
 	party_booking_delete(sd); // Party Booking [Spiria]
@@ -2103,7 +2096,7 @@ bool map_addnpc(int16 m,struct npc_data *nd)
 // Returns the index of successful, or -1 if the list was full.
 int map_addmobtolist(unsigned short m, struct spawn_data *spawn)
 {
-	size_t i;
+	int i;
 	ARR_FIND(0, MAX_MOB_LIST_PER_MAP, i, map[m].moblist[i] == NULL);
 	if(i < MAX_MOB_LIST_PER_MAP) {
 		map[m].moblist[i] = spawn;
@@ -2124,7 +2117,7 @@ void map_spawnmobs(int16 m)
 	for(i=0; i<MAX_MOB_LIST_PER_MAP; i++)
 		if(map[m].moblist[i]!=NULL) {
 			k+=map[m].moblist[i]->num;
-			npc_parse_mob2(map[m].moblist[i]);
+			npc->parse_mob2(map[m].moblist[i]);
 		}
 
 	if(battle_config.etc_log && k > 0) {
@@ -2199,7 +2192,7 @@ void map_removemobs(int16 m)
 int16 map_mapname2mapid(const char *name)
 {
 	unsigned short map_index;
-	map_index = mapindex_name2id(name);
+	map_index = mapindex->name2id(name);
 	if(!map_index)
 		return -1;
 	return map_mapindex2mapid(map_index);
@@ -2208,12 +2201,12 @@ int16 map_mapname2mapid(const char *name)
 /*==========================================
  * Returns the map of the given mapindex. [Skotlex]
  *------------------------------------------*/
-int16 map_mapindex2mapid(unsigned short mapindex) {
+int16 map_mapindex2mapid(unsigned short map_index) {
 
-	if (!mapindex || mapindex > MAX_MAPINDEX)
+	if (!map_index || map_index > MAX_MAPINDEX)
 		return -1;
 
-	return index2mapid[mapindex];
+	return index2mapid[map_index];
 }
 
 /*==========================================
@@ -2380,7 +2373,7 @@ void map_cellfromcache(struct map_data *m) {
 		m->setcell  = map_setcell;
 
 		for(i = 0; i < m->npc_num; i++) {
-			npc_setcells(m->npc[i]);
+			npc->setcells(m->npc[i]);
 		}
 	}
 }
@@ -2643,27 +2636,27 @@ void map_iwall_remove(const char *wall_name)
 static DBData create_map_data_other_server(DBKey key, va_list args)
 {
 	struct map_data_other_server *mdos;
-	unsigned short mapindex = (unsigned short)key.ui;
+	unsigned short map_index = (unsigned short)key.ui;
 	mdos=(struct map_data_other_server *)aCalloc(1,sizeof(struct map_data_other_server));
-	mdos->index = mapindex;
-	memcpy(mdos->name, mapindex_id2name(mapindex), MAP_NAME_LENGTH);
-	return db_ptr2data(mdos);
+	mdos->index = map_index;
+	memcpy(mdos->name, mapindex_id2name(map_index), MAP_NAME_LENGTH);
+	return DB->ptr2data(mdos);
 }
 
 /*==========================================
  * Add mapindex to db of another map server
  *------------------------------------------*/
-int map_setipport(unsigned short mapindex, uint32 ip, uint16 port)
+int map_setipport(unsigned short map_index, uint32 ip, uint16 port)
 {
 	struct map_data_other_server *mdos;
 
-	mdos= uidb_ensure(map_db,(unsigned int)mapindex, create_map_data_other_server);
+	mdos= uidb_ensure(map_db,(unsigned int)map_index, create_map_data_other_server);
 
 	if(mdos->cell) //Local map,Do nothing. Give priority to our own local maps over ones from another server. [Skotlex]
 		return 0;
 	if(ip == clif_getip() && port == clif_getport()) {
 		//That's odd, we received info that we are the ones with this map, but... we don't have it.
-		ShowFatalError("map_setipport : received info that this map-server SHOULD have map '%s', but it is not loaded.\n",mapindex_id2name(mapindex));
+		ShowFatalError("map_setipport : received info that this map-server SHOULD have map '%s', but it is not loaded.\n",mapindex_id2name(map_index));
 		exit(EXIT_FAILURE);
 	}
 	mdos->ip   = ip;
@@ -2677,7 +2670,7 @@ int map_setipport(unsigned short mapindex, uint32 ip, uint16 port)
  */
 int map_eraseallipport_sub(DBKey key, DBData *data, va_list va)
 {
-	struct map_data_other_server *mdos = db_data2ptr(data);
+	struct map_data_other_server *mdos = DB->data2ptr(data);
 	if(mdos->cell == NULL) {
 		db_remove(map_db,key);
 		aFree(mdos);
@@ -2694,16 +2687,16 @@ int map_eraseallipport(void)
 /*==========================================
  * Delete mapindex from db of another map server
  *------------------------------------------*/
-int map_eraseipport(unsigned short mapindex, uint32 ip, uint16 port)
+int map_eraseipport(unsigned short map_index, uint32 ip, uint16 port)
 {
 	struct map_data_other_server *mdos;
 
-	mdos = (struct map_data_other_server *)uidb_get(map_db,(unsigned int)mapindex);
+	mdos = (struct map_data_other_server *)uidb_get(map_db,(unsigned int)map_index);
 	if(!mdos || mdos->cell) //Map either does not exists or is a local map.
 		return 0;
 
 	if(mdos->ip==ip && mdos->port == port) {
-		uidb_remove(map_db,(unsigned int)mapindex);
+		uidb_remove(map_db,(unsigned int)map_index);
 		aFree(mdos);
 		return 1;
 	}
@@ -2788,7 +2781,7 @@ int map_readfromcache(struct map_data *m, char *buffer) {
 
 int map_addmap(char* mapname) {
 	map[map_num].instance_id = -1;
-	mapindex_getmapname(mapname, map[map_num++].name);
+	mapindex->getmapname(mapname, map[map_num++].name);
 	return 0;
 }
 
@@ -2810,7 +2803,7 @@ int map_delmap(char *mapname)
 		return 0;
 	}
 
-	mapindex_getmapname(mapname, map_name);
+	mapindex->getmapname(mapname, map_name);
 	for(i = 0; i < map_num; i++) {
 		if(strcmp(map[i].name, map_name) == 0) {
 			map_delmapid(i);
@@ -3211,7 +3204,7 @@ int map_readallmaps(void)
 			continue;
 		}
 
-		map[i].index = mapindex_name2id(map[i].name);
+		map[i].index = mapindex->name2id(map[i].name);
 
 		if(index2mapid[map_id2index(i)] != -1) {
 			ShowWarning("Mapa %s já está carregado!"CL_CLL"\n", map[i].name);
@@ -3270,7 +3263,7 @@ int parse_console(const char *buf)
 {
 	char type[64];
 	char command[64];
-	char map[64];
+	char map_name[64];
 	int16 x = 0;
 	int16 y = 0;
 	int16 m;
@@ -3280,14 +3273,14 @@ int parse_console(const char *buf)
 	memset(&sd, 0, sizeof(struct map_session_data));
 	strcpy(sd.status.name, "console");
 
-	if((n = sscanf(buf, "%63[^:]:%63[^:]:%63s %hd %hd[^\n]", type, command, map, &x, &y)) < 5) {
+	if((n = sscanf(buf, "%63[^:]:%63[^:]:%63s %hd %hd[^\n]", type, command, map_name, &x, &y)) < 5) {
 		if((n = sscanf(buf, "%63[^:]:%63[^\n]", type, command)) < 2) {
 			n = sscanf(buf, "%63[^\n]", type);
 		}
 	}
 
 	if(n == 5) {
-		m = map_mapname2mapid(map);
+		m = map_mapname2mapid(map_name);
 		if(m < 0) {
 			ShowWarning("Console: Mapa desconhecido.\n");
 			return 0;
@@ -3299,14 +3292,14 @@ int parse_console(const char *buf)
 		if(y > 0)
 			sd.bl.y = y;
 	} else {
-		map[0] = '\0';
+		map_name[0] = '\0';
 		if(n < 2)
 			command[0] = '\0';
 		if(n < 1)
 			type[0] = '\0';
 	}
 
-	ShowNotice("Type of command: '%s' || Command: '%s' || Map: '%s' Coords: %d %d\n", type, command, map, x, y);
+	ShowNotice("Type of command: '%s' || Command: '%s' || Map: '%s' Coords: %d %d\n", type, command, map_name, x, y);
 
 	if(n == 5 && strcmpi("admin",type) == 0) {
 		if(!is_atcommand(sd.fd, &sd, command, 0))
@@ -3389,9 +3382,9 @@ int map_config_read(char *cfgName)
 		else if(strcmpi(w1, "delmap") == 0)
 			map_num--;
 		else if(strcmpi(w1, "npc") == 0)
-			npc_addsrcfile(w2);
+			npc->addsrcfile(w2);
 		else if(strcmpi(w1, "delnpc") == 0)
-			npc_delsrcfile(w2);
+			npc->delsrcfile(w2);
 		else if(strcmpi(w1, "autosave_time") == 0) {
 			autosave_interval = atoi(w2);
 			if(autosave_interval < 1)  //Revert to default saving.
@@ -3498,9 +3491,9 @@ void map_reloadnpc_sub(char *cfgName)
 		*ptr = '\0';
 
 		if(strcmpi(w1, "npc") == 0)
-			npc_addsrcfile(w2);
+			npc->addsrcfile(w2);
 		else if(strcmpi(w1, "delnpc") == 0)
-			npc_delsrcfile(w2);
+			npc->delsrcfile(w2);
 		else if(strcmpi(w1, "import") == 0)
 			map_reloadnpc_sub(w2);
 		else
@@ -3513,7 +3506,7 @@ void map_reloadnpc_sub(char *cfgName)
 void map_reloadnpc(bool clear)
 {
 	if(clear)
-		npc_addsrcfile("clear"); // this will clear the current script list
+		npc->addsrcfile("clear"); // this will clear the current script list
 
 #if VERSION == 1
 	map_reloadnpc_sub("npc/scripts_renovacao.conf");
@@ -3530,8 +3523,7 @@ int inter_config_read(char *cfgName)
 	char line[1024],w1[1024],w2[1024];
 	FILE *fp;
 
-	fp=fopen(cfgName,"r");
-	if(fp==NULL) {
+	if(!(fp = fopen(cfgName,"r"))){
 		ShowError("Arquivo n%co encontrado: %s\n", 198, cfgName);
 		return 1;
 	}
@@ -3542,7 +3534,9 @@ int inter_config_read(char *cfgName)
 			continue;
 
 		//Map Server SQL DB
-		if(strcmpi(w1,"map_server_ip")==0)
+		if(strcmpi(w1,"interreg_db")==0)
+			strcpy(interreg_db,w2);
+		else if(strcmpi(w1,"map_server_ip")==0)
 			strcpy(map_server_ip, w2);
 		else if(strcmpi(w1,"map_server_port")==0)
 			map_server_port=atoi(w2);
@@ -3554,6 +3548,10 @@ int inter_config_read(char *cfgName)
 			strcpy(map_server_db, w2);
 		else if(strcmpi(w1,"default_codepage")==0)
 			strcpy(default_codepage, w2);
+		else if(strcmpi(w1,"autotrade_merchants_db")==0)
+			strcpy(autotrade_merchants_db, w2);
+		else if(strcmpi(w1,"autotrade_data_db")==0)
+			strcpy(autotrade_data_db, w2);
 		else if(strcmpi(w1,"log_db_ip")==0)
 			strcpy(log_db_ip, w2);
 		else if(strcmpi(w1,"log_db_id")==0)
@@ -3574,7 +3572,7 @@ int inter_config_read(char *cfgName)
 			db_port = atoi(w2);
 		else if(!strcmpi(w1,"db_name"))
 			strncpy(db_db2name, w2, sizeof(db_db2name));
-		else if(mapreg_config_read(w1,w2))
+		else if (mapreg->config_read(w1, w2))
 			continue;
 		//support the import command, just like any other config
 		else if(strcmpi(w1,"import")==0)
@@ -3738,7 +3736,7 @@ int map_sql_init(void)
 	ShowStatus("Conex%co efetuada com sucesso! (map-server)\n", 198);
 
 	if(strlen(default_codepage) > 0)
-		if(SQL_ERROR == Sql_SetEncoding(mmysql_handle, default_codepage))
+	if(SQL_ERROR == Sql_SetEncoding(mmysql_handle, default_codepage))
 			Sql_ShowDebug(mmysql_handle);
 
 	return 0;
@@ -3773,7 +3771,7 @@ int log_sql_init(void)
 	ShowStatus("Conex%co efetuada com sucesso no banco de dados '"CL_WHITE"%s"CL_RESET"'.\n", 198, log_db_db);
 
 	if(strlen(default_codepage) > 0)
-		if(SQL_ERROR == Sql_SetEncoding(logmysql_handle, default_codepage))
+	if(SQL_ERROR == Sql_SetEncoding(logmysql_handle, default_codepage))
 			Sql_ShowDebug(logmysql_handle);
 #endif
 	return 0;
@@ -3816,7 +3814,7 @@ void map_zone_remove(int m) {
 	unsigned short k;
 	char empty[1] = "\0";
 	for(k = 0; k < map[m].zone_mf_count; k++) {
-		int len = strlen(map[m].zone_mf[k]),j;
+		size_t len = strlen(map[m].zone_mf[k]),j;
 		params[0] = '\0';
 		memcpy(flag, map[m].zone_mf[k], MAP_ZONE_MAPFLAG_LENGTH);
 		for(j = 0; j < len; j++) {
@@ -3827,7 +3825,7 @@ void map_zone_remove(int m) {
 			}
 		}
 
-		npc_parse_mapflag(map[m].name,empty,flag,params,empty,empty,empty);
+		npc->parse_mapflag(map[m].name,empty,flag,params,empty,empty,empty);
 		aFree(map[m].zone_mf[k]);
 		map[m].zone_mf[k] = NULL;
 	}
@@ -3851,33 +3849,34 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 		state = 0;
 	
 	if (!strcmpi(flag, "nosave")) {
-		;/* not yet supported to be reversed */
-		/*
+		/* not yet supported to be reversed */
+#if 0
 		char savemap[32];
 		int savex, savey;
 		if (state == 0) {
 			if(map[m].flag.nosave) {
-				sprintf(rflag, "nosave	SavePoint");
+				sprintf(rflag, "nosave\tSavePoint");
 				map_zone_mf_cache_add(m,nosave);
 			}
 		} else if (!strcmpi(params, "SavePoint")) {
 			if( map[m].save.map ) {
-				sprintf(rflag, "nosave	%s,%d,%d",mapindex_id2name(map[m].save.map),map[m].save.x,map[m].save.y);
+				sprintf(rflag, "nosave\t%s,%d,%d",mapindex_id2name(map[m].save.map),map[m].save.x,map[m].save.y);
 			} else
-				sprintf(rflag, "nosave	%s,%d,%d",mapindex_id2name(map[m].save.map),map[m].save.x,map[m].save.y);
+				sprintf(rflag, "nosave\t%s,%d,%d",mapindex_id2name(map[m].save.map),map[m].save.x,map[m].save.y);
 				map_zone_mf_cache_add(m,nosave);
 		} else if (sscanf(params, "%31[^,],%d,%d", savemap, &savex, &savey) == 3) {
 			if(map[m].save.map) {
-				sprintf(rflag, "nosave	%s,%d,%d",mapindex_id2name(map[m].save.map),map[m].save.x,map[m].save.y);
+				sprintf(rflag, "nosave\t%s,%d,%d",mapindex_id2name(map[m].save.map),map[m].save.x,map[m].save.y);
 				map_zone_mf_cache_add(m,nosave);
 			}
-		}*/
+		}
+#endif // 0
 	} else if (!strcmpi(flag,"autotrade")) {
 		if(state && map[m].flag.autotrade)
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"autotrade	off");
+				map_zone_mf_cache_add(m,"autotrade\toff");
 			else if(!map[m].flag.autotrade)
 				map_zone_mf_cache_add(m,"autotrade");
 		}
@@ -3886,7 +3885,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if( state )
-				map_zone_mf_cache_add(m,"allowks	off");
+				map_zone_mf_cache_add(m,"allowks\toff");
 			else if( !map[m].flag.allowks )
 				map_zone_mf_cache_add(m,"allowks");
 		}
@@ -3895,7 +3894,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"town	off");
+				map_zone_mf_cache_add(m,"town\toff");
 			else if(!map[m].flag.town)
 				map_zone_mf_cache_add(m,"town");
 		}
@@ -3904,7 +3903,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nomemo	off");
+				map_zone_mf_cache_add(m,"nomemo\toff");
 			else if(!map[m].flag.nomemo)
 				map_zone_mf_cache_add(m,"nomemo");
 		}
@@ -3913,7 +3912,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noteleport	off");
+				map_zone_mf_cache_add(m,"noteleport\toff");
 			else if(!map[m].flag.noteleport)
 				map_zone_mf_cache_add(m,"noteleport");
 		}
@@ -3922,7 +3921,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nowarp	off");
+				map_zone_mf_cache_add(m,"nowarp\toff");
 			else if(!map[m].flag.nowarp)
 				map_zone_mf_cache_add(m,"nowarp");
 		}
@@ -3931,7 +3930,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nowarpto	off");
+				map_zone_mf_cache_add(m,"nowarpto\toff");
 			else if(!map[m].flag.nowarpto)
 				map_zone_mf_cache_add(m,"nowarpto");
 		}
@@ -3940,7 +3939,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noreturn	off");
+				map_zone_mf_cache_add(m,"noreturn\toff");
 			else if(map[m].flag.noreturn)
 				map_zone_mf_cache_add(m,"noreturn");
 		}
@@ -3949,7 +3948,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"monster_noteleport	off");
+				map_zone_mf_cache_add(m,"monster_noteleport\toff");
 			else if(map[m].flag.monster_noteleport)
 				map_zone_mf_cache_add(m,"monster_noteleport");
 		}
@@ -3958,7 +3957,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nobranch	off");
+				map_zone_mf_cache_add(m,"nobranch\toff");
 			else if(map[m].flag.nobranch)
 				map_zone_mf_cache_add(m,"nobranch");
 		}
@@ -3967,7 +3966,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if( state )
-				map_zone_mf_cache_add(m,"nopenalty	off");
+				map_zone_mf_cache_add(m,"nopenalty\toff");
 			else if(map[m].flag.noexppenalty)
 				map_zone_mf_cache_add(m,"nopenalty");
 		}
@@ -3976,7 +3975,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"pvp	off");
+				map_zone_mf_cache_add(m,"pvp\toff");
 			else if(map[m].flag.pvp)
 				map_zone_mf_cache_add(m,"pvp");
 		}
@@ -3986,7 +3985,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"pvp_noparty	off");
+				map_zone_mf_cache_add(m,"pvp_noparty\toff");
 			else if(map[m].flag.pvp_noparty)
 				map_zone_mf_cache_add(m,"pvp_noparty");
 		}
@@ -3995,7 +3994,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if( state )
-				map_zone_mf_cache_add(m,"pvp_noguild	off");
+				map_zone_mf_cache_add(m,"pvp_noguild\toff");
 			else if(map[m].flag.pvp_noguild)
 				map_zone_mf_cache_add(m,"pvp_noguild");
 		}
@@ -4004,12 +4003,12 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if( state )
-				map_zone_mf_cache_add(m,"pvp_nightmaredrop	off");
+				map_zone_mf_cache_add(m,"pvp_nightmaredrop\toff");
 			else if(map[m].flag.pvp_nightmaredrop)
 				map_zone_mf_cache_add(m,"pvp_nightmaredrop");
 		}
-		/* not yet fully supported */
-		/*char drop_arg1[16], drop_arg2[16];
+#if 0 /* not yet fully supported */
+		char drop_arg1[16], drop_arg2[16];
 		int drop_per = 0;
 		if (sscanf(w4, "%[^,],%[^,],%d", drop_arg1, drop_arg2, &drop_per) == 3) {
 			int drop_id = 0, drop_type = 0;
@@ -4038,13 +4037,13 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			}
 		} else if (!state) //Disable
 			map[m].flag.pvp_nightmaredrop = 0;
-		 */
+#endif // 0
 	} else if (!strcmpi(flag,"pvp_nocalcrank")) {
 		if( state && map[m].flag.pvp_nocalcrank )
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"pvp_nocalcrank	off");
+				map_zone_mf_cache_add(m,"pvp_nocalcrank\toff");
 			else if( map[m].flag.pvp_nocalcrank )
 				map_zone_mf_cache_add(m,"pvp_nocalcrank");
 		}
@@ -4053,7 +4052,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"gvg	off");
+				map_zone_mf_cache_add(m,"gvg\toff");
 			else if( map[m].flag.gvg )
 				map_zone_mf_cache_add(m,"gvg");
 		}
@@ -4062,7 +4061,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"gvg_noparty	off");
+				map_zone_mf_cache_add(m,"gvg_noparty\toff");
 			else if(map[m].flag.gvg_noparty)
 				map_zone_mf_cache_add(m,"gvg_noparty");
 		}
@@ -4071,7 +4070,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"gvg_dungeon	off");
+				map_zone_mf_cache_add(m,"gvg_dungeon\toff");
 			else if(map[m].flag.gvg_dungeon)
 				map_zone_mf_cache_add(m,"gvg_dungeon");
 		}
@@ -4081,7 +4080,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"gvg_castle	off");
+				map_zone_mf_cache_add(m,"gvg_castle\toff");
 			else if(map[m].flag.gvg_castle)
 				map_zone_mf_cache_add(m,"gvg_castle");
 		}
@@ -4091,7 +4090,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"battleground	off");
+				map_zone_mf_cache_add(m,"battleground\toff");
 			else if(map[m].flag.battleground)
 				map_zone_mf_cache_add(m,"battleground");
 		}
@@ -4100,7 +4099,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noexppenalty	off");
+				map_zone_mf_cache_add(m,"noexppenalty\toff");
 			else if(map[m].flag.noexppenalty)
 				map_zone_mf_cache_add(m,"noexppenalty");
 		}
@@ -4109,7 +4108,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nozenypenalty	off");
+				map_zone_mf_cache_add(m,"nozenypenalty\toff");
 			else if(map[m].flag.nozenypenalty)
 				map_zone_mf_cache_add(m,"nozenypenalty");
 		}
@@ -4118,7 +4117,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"notrade	off");
+				map_zone_mf_cache_add(m,"notrade\toff");
 			else if(map[m].flag.notrade)
 				map_zone_mf_cache_add(m,"notrade");
 		}
@@ -4127,7 +4126,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"novending	off");
+				map_zone_mf_cache_add(m,"novending\toff");
 			else if(map[m].flag.novending)
 				map_zone_mf_cache_add(m,"novending");
 		}
@@ -4136,7 +4135,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nodrop	off");
+				map_zone_mf_cache_add(m,"nodrop\toff");
 			else if(map[m].flag.nodrop)
 				map_zone_mf_cache_add(m,"nodrop");
 		}
@@ -4145,7 +4144,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noskill	off");
+				map_zone_mf_cache_add(m,"noskill\toff");
 			else if(map[m].flag.noskill)
 				map_zone_mf_cache_add(m,"noskill");
 		}
@@ -4154,7 +4153,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noicewall	off");
+				map_zone_mf_cache_add(m,"noicewall\toff");
 			else if(map[m].flag.noicewall)
 				map_zone_mf_cache_add(m,"noicewall");
 		}
@@ -4163,7 +4162,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"rain	off");
+				map_zone_mf_cache_add(m,"rain\toff");
 			else if(map[m].flag.rain)
 				map_zone_mf_cache_add(m,"rain");
 		}
@@ -4172,7 +4171,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"snow	off");
+				map_zone_mf_cache_add(m,"snow\toff");
 			else if(map[m].flag.snow)
 				map_zone_mf_cache_add(m,"snow");
 		}
@@ -4181,7 +4180,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"clouds	off");
+				map_zone_mf_cache_add(m,"clouds\toff");
 			else if(map[m].flag.clouds)
 				map_zone_mf_cache_add(m,"clouds");
 		}
@@ -4190,7 +4189,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"clouds2	off");
+				map_zone_mf_cache_add(m,"clouds2\toff");
 			else if(map[m].flag.clouds2)
 				map_zone_mf_cache_add(m,"clouds2");
 		}
@@ -4199,7 +4198,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"fog	off");
+				map_zone_mf_cache_add(m,"fog\toff");
 			else if(map[m].flag.fog)
 				map_zone_mf_cache_add(m,"fog");
 		}
@@ -4208,7 +4207,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if( state )
-				map_zone_mf_cache_add(m,"fireworks	off");
+				map_zone_mf_cache_add(m,"fireworks\toff");
 			else if( map[m].flag.fireworks )
 				map_zone_mf_cache_add(m,"fireworks");
 		}
@@ -4217,7 +4216,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"sakura	off");
+				map_zone_mf_cache_add(m,"sakura\toff");
 			else if(map[m].flag.sakura)
 				map_zone_mf_cache_add(m,"sakura");
 		}
@@ -4226,7 +4225,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"leaves	off");
+				map_zone_mf_cache_add(m,"leaves\toff");
 			else if(map[m].flag.leaves)
 				map_zone_mf_cache_add(m,"leaves");
 		}
@@ -4235,7 +4234,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if( state )
-				map_zone_mf_cache_add(m,"nightenabled	off");
+				map_zone_mf_cache_add(m,"nightenabled\toff");
 			else if(map[m].flag.nightenabled)
 				map_zone_mf_cache_add(m,"nightenabled");
 		}
@@ -4244,7 +4243,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noexp	off");
+				map_zone_mf_cache_add(m,"noexp\toff");
 			else if(map[m].flag.nobaseexp)
 				map_zone_mf_cache_add(m,"noexp");
 		}
@@ -4254,7 +4253,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if( state )
-				map_zone_mf_cache_add(m,"nobaseexp	off");
+				map_zone_mf_cache_add(m,"nobaseexp\toff");
 			else if(map[m].flag.nobaseexp)
 				map_zone_mf_cache_add(m,"nobaseexp");
 		}
@@ -4263,7 +4262,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nojobexp	off");
+				map_zone_mf_cache_add(m,"nojobexp\toff");
 			else if(map[m].flag.nojobexp)
 				map_zone_mf_cache_add(m,"nojobexp");
 		}
@@ -4272,7 +4271,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noloot	off");
+				map_zone_mf_cache_add(m,"noloot\toff");
 			else if(map[m].flag.nomobloot)
 				map_zone_mf_cache_add(m,"noloot");
 		}
@@ -4281,7 +4280,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nomobloot	off");
+				map_zone_mf_cache_add(m,"nomobloot\toff");
 			else if(map[m].flag.nomobloot)
 				map_zone_mf_cache_add(m,"nomobloot");
 		}
@@ -4290,42 +4289,42 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nomvploot	off");
+				map_zone_mf_cache_add(m,"nomvploot\toff");
 			else if(map[m].flag.nomvploot)
 				map_zone_mf_cache_add(m,"nomvploot");
 		}
 	} else if (!strcmpi(flag,"nocommand")) {
 		/* implementation may be incomplete */
 		if(state && sscanf(params, "%d", &state) == 1) {
-			sprintf(rflag, "nocommand	%s",params);
+			sprintf(rflag, "nocommand\t%s",params);
 			map_zone_mf_cache_add(m,rflag);
 		} else if(!state && map[m].nocommand) {
-			sprintf(rflag, "nocommand	%d",map[m].nocommand);
+			sprintf(rflag, "nocommand\t%d",map[m].nocommand);
 			map_zone_mf_cache_add(m,rflag);
 		} else if(map[m].nocommand) {
-			map_zone_mf_cache_add(m,"nocommand	off");
+			map_zone_mf_cache_add(m,"nocommand\toff");
 		}
 	} else if (!strcmpi(flag,"jexp")) {
 		if(!state) {
 			if(map[m].jexp != 100) {
-				sprintf(rflag,"jexp	%d",map[m].jexp);
+				sprintf(rflag,"jexp\t%d",map[m].jexp);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].jexp) {
-				sprintf(rflag,"jexp	%s",params);
+				sprintf(rflag,"jexp\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
 	} else if (!strcmpi(flag,"bexp")) {
 		if(!state) {
 			if(map[m].bexp != 100) {
-				sprintf(rflag,"bexp	%d",map[m].jexp);
+				sprintf(rflag,"bexp\t%d",map[m].jexp);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].bexp) {
-				sprintf(rflag,"bexp	%s",params);
+				sprintf(rflag,"bexp\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
@@ -4334,7 +4333,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"loadevent	off");
+				map_zone_mf_cache_add(m,"loadevent\toff");
 			else if(map[m].flag.loadevent)
 				map_zone_mf_cache_add(m,"loadevent");
 		}
@@ -4343,7 +4342,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nochat	off");
+				map_zone_mf_cache_add(m,"nochat\toff");
 			else if(map[m].flag.nochat)
 				map_zone_mf_cache_add(m,"nochat");
 		}
@@ -4352,7 +4351,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"partylock	off");
+				map_zone_mf_cache_add(m,"partylock\toff");
 			else if(map[m].flag.partylock)
 				map_zone_mf_cache_add(m,"partylock");
 		}
@@ -4361,7 +4360,7 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"guildlock	off");
+				map_zone_mf_cache_add(m,"guildlock\toff");
 			else if(map[m].flag.guildlock)
 				map_zone_mf_cache_add(m,"guildlock");
 		}
@@ -4370,14 +4369,14 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"reset	off");
+				map_zone_mf_cache_add(m,"reset\toff");
 			else if(map[m].flag.reset)
 				map_zone_mf_cache_add(m,"reset");
 		}
 	} else if (!strcmpi(flag,"adjust_unit_duration")) {
 		int skill_id, k;
 		char skill_name[MAP_ZONE_MAPFLAG_LENGTH], modifier[MAP_ZONE_MAPFLAG_LENGTH];
-		int len = strlen(params);
+		size_t len = strlen(params);
 		
 		modifier[0] = '\0';
 		memcpy(skill_name, params, MAP_ZONE_MAPFLAG_LENGTH);
@@ -4395,23 +4394,22 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 		} else {
 			int idx = map[m].unit_count;
 
-			k = 0;
 			ARR_FIND(0, idx, k, map[m].units[k]->skill_id == skill_id);
 
 			if(k < idx) {
 				if(atoi(modifier) != map[m].units[k]->modifier) {
-					sprintf(rflag,"adjust_unit_duration	%s	%d",skill_name,map[m].units[k]->modifier);
+					sprintf(rflag,"adjust_unit_duration\t%s\t%d",skill_name,map[m].units[k]->modifier);
 					map_zone_mf_cache_add(m,rflag);
 				}
 			} else {
-				sprintf(rflag,"adjust_unit_duration	%s	100",skill_name);
+				sprintf(rflag,"adjust_unit_duration\t%s\t100",skill_name);
 				map_zone_mf_cache_add(m,rflag);
 			}			
 		}
 	} else if (!strcmpi(flag,"adjust_skill_damage")) {
 		int skill_id, k;
 		char skill_name[MAP_ZONE_MAPFLAG_LENGTH], modifier[MAP_ZONE_MAPFLAG_LENGTH];
-		int len = strlen(params);
+		size_t len = strlen(params);
 		
 		modifier[0] = '\0';
 		memcpy(skill_name, params, MAP_ZONE_MAPFLAG_LENGTH);
@@ -4434,11 +4432,11 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 
 			if(k < idx) {
 				if(atoi(modifier) != map[m].skills[k]->modifier) {
-					sprintf(rflag,"adjust_skill_damage	%s	%d",skill_name,map[m].skills[k]->modifier);
+					sprintf(rflag,"adjust_skill_damage\t%s\t%d",skill_name,map[m].skills[k]->modifier);
 					map_zone_mf_cache_add(m,rflag);
 				}
 			} else {
-				sprintf(rflag,"adjust_skill_damage	%s	100",skill_name);
+				sprintf(rflag,"adjust_skill_damage\t%s\t100",skill_name);
 				map_zone_mf_cache_add(m,rflag);
 			}
 
@@ -4451,19 +4449,19 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"nomapchannelautojoin	off");
+				map_zone_mf_cache_add(m,"nomapchannelautojoin\toff");
 			else if(map[m].flag.chsysnolocalaj)
 				map_zone_mf_cache_add(m,"nomapchannelautojoin");
 		}
 	} else if (!strcmpi(flag,"invincible_time_inc")) {
 		if(!state) {
 			if(map[m].invincible_time_inc != 0) {
-				sprintf(rflag,"invincible_time_inc	%d",map[m].invincible_time_inc);
+				sprintf(rflag,"invincible_time_inc\t%d",map[m].invincible_time_inc);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].invincible_time_inc) {
-				sprintf(rflag,"invincible_time_inc	%s",params);
+				sprintf(rflag,"invincible_time_inc\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
@@ -4472,67 +4470,67 @@ bool map_zone_mf_cache(int m, char *flag, char *params) {
 			;/* nothing to do */
 		else {
 			if(state)
-				map_zone_mf_cache_add(m,"noknockback	off");
+				map_zone_mf_cache_add(m,"noknockback\toff");
 			else if(map[m].flag.noknockback)
 				map_zone_mf_cache_add(m,"noknockback");
 		}
 	} else if (!strcmpi(flag,"weapon_damage_rate")) {
 		if(!state) {
 			if(map[m].weapon_damage_rate != 100) {
-				sprintf(rflag,"weapon_damage_rate	%d",map[m].weapon_damage_rate);
+				sprintf(rflag,"weapon_damage_rate\t%d",map[m].weapon_damage_rate);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].weapon_damage_rate) {
-				sprintf(rflag,"weapon_damage_rate	%s",params);
+				sprintf(rflag,"weapon_damage_rate\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
 	} else if (!strcmpi(flag,"magic_damage_rate")) {
 		if(!state) {
 			if(map[m].magic_damage_rate != 100) {
-				sprintf(rflag,"magic_damage_rate	%d",map[m].magic_damage_rate);
+				sprintf(rflag,"magic_damage_rate\t%d",map[m].magic_damage_rate);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].magic_damage_rate) {
-				sprintf(rflag,"magic_damage_rate	%s",params);
+				sprintf(rflag,"magic_damage_rate\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
 	} else if (!strcmpi(flag,"misc_damage_rate")) {
 		if(!state) {
 			if(map[m].misc_damage_rate != 100) {
-				sprintf(rflag,"misc_damage_rate	%d",map[m].misc_damage_rate);
+				sprintf(rflag,"misc_damage_rate\t%d",map[m].misc_damage_rate);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].misc_damage_rate) {
-				sprintf(rflag,"misc_damage_rate	%s",params);
+				sprintf(rflag,"misc_damage_rate\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
 	} else if (!strcmpi(flag,"short_damage_rate")) {
 		if(!state) {
 			if(map[m].short_damage_rate != 100) {
-				sprintf(rflag,"short_damage_rate	%d",map[m].short_damage_rate);
+				sprintf(rflag,"short_damage_rate\t%d",map[m].short_damage_rate);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].short_damage_rate) {
-				sprintf(rflag,"short_damage_rate	%s",params);
+				sprintf(rflag,"short_damage_rate\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
 	} else if (!strcmpi(flag,"long_damage_rate")) {
 		if(!state) {
 			if(map[m].long_damage_rate != 100) {
-				sprintf(rflag,"long_damage_rate	%d",map[m].long_damage_rate);
+				sprintf(rflag,"long_damage_rate\t%d",map[m].long_damage_rate);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		} if(sscanf(params, "%d", &state) == 1) {
 			if(state != map[m].long_damage_rate) {
-				sprintf(rflag,"long_damage_rate	%s",params);
+				sprintf(rflag,"long_damage_rate\t%s",params);
 				map_zone_mf_cache_add(m,rflag);
 			}
 		}
@@ -4555,7 +4553,7 @@ void map_zone_apply(int m, struct map_zone_data *zone, const char* start, const 
 	char flag[MAP_ZONE_MAPFLAG_LENGTH], params[MAP_ZONE_MAPFLAG_LENGTH];
 	map[m].zone = zone;
 	for(i = 0; i < zone->mapflags_count; i++) {
-		int len = strlen(zone->mapflags[i]);
+		size_t len = strlen(zone->mapflags[i]);
 		int k;
 		params[0] = '\0';
 		memcpy(flag, zone->mapflags[i], MAP_ZONE_MAPFLAG_LENGTH);
@@ -4570,7 +4568,7 @@ void map_zone_apply(int m, struct map_zone_data *zone, const char* start, const 
 		if(map_zone_mf_cache(m,flag,params))
 			continue;
 
-		npc_parse_mapflag(map[m].name,empty,flag,params,start,buffer,filepath);
+		npc->parse_mapflag(map[m].name,empty,flag,params,start,buffer,filepath);
 	}
 }
 /* used on npc load and reload to apply all "Normal" and "PK Mode" zones */
@@ -4583,7 +4581,7 @@ void map_zone_init(void) {
 	zone = &map_zone_all;
 	
 	for(i = 0; i < zone->mapflags_count; i++) {
-		int len = strlen(zone->mapflags[i]);
+		size_t len = strlen(zone->mapflags[i]);
 		params[0] = '\0';
 		memcpy(flag, zone->mapflags[i], MAP_ZONE_MAPFLAG_LENGTH);
 		for(k = 0; k < len; k++) {
@@ -4598,7 +4596,7 @@ void map_zone_init(void) {
 			if( map[j].zone == zone ) {
 				if(map_zone_mf_cache(j,flag,params))
 					break;
-				npc_parse_mapflag(map[j].name,empty,flag,params,empty,empty,empty);
+				npc->parse_mapflag(map[j].name,empty,flag,params,empty,empty,empty);
 			}
 		}
 	}
@@ -4606,7 +4604,7 @@ void map_zone_init(void) {
 	if( battle_config.pk_mode ) {
 		zone = &map_zone_pk;
 		for(i = 0; i < zone->mapflags_count; i++) {
-			int len = strlen(zone->mapflags[i]);
+			size_t len = strlen(zone->mapflags[i]);
 			params[0] = '\0';
 			memcpy(flag, zone->mapflags[i], MAP_ZONE_MAPFLAG_LENGTH);
 			for(k = 0; k < len; k++) {
@@ -4620,7 +4618,7 @@ void map_zone_init(void) {
 				if( map[j].zone == zone ) {
 					if(map_zone_mf_cache(j,flag,params))
 						break;
-					npc_parse_mapflag(map[j].name,empty,flag,params,empty,empty,empty);
+					npc->parse_mapflag(map[j].name,empty,flag,params,empty,empty,empty);
 				}
 			}
 		}
@@ -4706,17 +4704,17 @@ enum bl_type map_zone_bl_type(const char *entry, enum map_zone_skill_subtype *su
 void read_map_zone_db(void) {
 	config_t map_zone_db;
 	config_setting_t *zones = NULL;
-	const char *config_filename = "db/map_zone.conf"; // FIXME hardcoded name
-
+#if VERSION == 1
+	const char *config_filename = "db/map_zone_re.conf"; // FIXME hardcoded name
+#elif VERSION == 0
+	const char *config_filename = "db/map_zone_pre.conf"; // FIXME hardcoded name
+#else
+	const char *config_filename = "db/map_zone_ot.conf"; // FIXME hardcoded name
+#endif
 	if (conf_read_file(&map_zone_db, config_filename))
 		return;
-#if VERSION == 1
-	zones = config_lookup(&map_zone_db, "zonesre");
-#elif VERSION == 0
-	zones = config_lookup(&map_zone_db, "zonespre");
-#else
-	zones = config_lookup(&map_zone_db, "zonesot");
-#endif
+
+	zones = config_lookup(&map_zone_db, "zones");
 
 	if (zones != NULL) {
 		struct map_zone_data *zone;
@@ -5148,7 +5146,7 @@ bool map_remove_questinfo(int m, struct npc_data *nd) {
  */
 int map_db_final(DBKey key, DBData *data, va_list ap)
 {
-	struct map_data_other_server *mdos = db_data2ptr(data);
+	struct map_data_other_server *mdos = DB->data2ptr(data);
 	if(mdos && iMalloc->verify_ptr(mdos) && mdos->cell == NULL)
 		aFree(mdos);
 
@@ -5160,7 +5158,7 @@ int map_db_final(DBKey key, DBData *data, va_list ap)
  */
 int nick_db_final(DBKey key, DBData *data, va_list args)
 {
-	struct charid2nick *p = db_data2ptr(data);
+	struct charid2nick *p = DB->data2ptr(data);
 	struct charid_request *req;
 
 	if(p == NULL)
@@ -5183,7 +5181,7 @@ int cleanup_sub(struct block_list *bl, va_list ap)
 			map_quit((struct map_session_data *) bl);
 			break;
 		case BL_NPC:
-			npc_unload((struct npc_data *)bl,false);
+			npc->unload((struct npc_data *)bl,false);
 			break;
 		case BL_MOB:
 			unit_free(bl,CLR_OUTSIGHT);
@@ -5207,7 +5205,7 @@ int cleanup_sub(struct block_list *bl, va_list ap)
  */
 static int cleanup_db_sub(DBKey key, DBData *data, va_list va)
 {
-	return cleanup_sub(db_data2ptr(data), va);
+	return cleanup_sub(DB->data2ptr(data), va);
 }
 
 /*==========================================
@@ -5222,6 +5220,8 @@ void do_final(void)
 	ShowStatus("Terminating...\n");
 	raChSys.closing = true;
 
+	if (map_cpsd) aFree(map_cpsd);
+
 	//Ladies and babies first.
 	iter = mapit_getallusers();
 	for(sd = (TBL_PC *)mapit_first(iter); mapit_exists(iter); sd = (TBL_PC *)mapit_next(iter))
@@ -5229,7 +5229,7 @@ void do_final(void)
 	mapit_free(iter);
 
 	/* prepares npcs for a faster shutdown process */
-	do_clear_npc();
+	npc->do_clear_npc();
 
 	// remove all objects on maps
 	for(i = 0; i < map_num; i++) {
@@ -5247,13 +5247,13 @@ void do_final(void)
 	do_final_battle();
 	do_final_chrif();
 	do_final_clif();
-	do_final_npc();
+	npc->final();
 	quest->final();
-	do_final_script();
+	script->final();
 	do_final_itemdb();
 	instance->final();
-	do_final_storage();
-	do_final_guild();
+	gstorage->final();
+	guild->final();
 	do_final_party();
 	do_final_pc();
 	do_final_pet();
@@ -5266,11 +5266,11 @@ void do_final(void)
 	do_final_duel();
 	do_final_elemental();
 	do_final_maps();
-	do_final_vending();
+	vending->final();
 
 	map_db->destroy(map_db, map_db_final);
 
-	mapindex_final();
+	mapindex->final();
 	if(enable_grf)
 		grfio_final();
 
@@ -5482,10 +5482,21 @@ int do_init(int argc, char *argv[])
 	battleground_defaults();
 	clif_defaults();
 	instance_defaults();
+	guild_defaults();
+	gstorage_defaults();
 	homunculus_defaults();
 	itemdb_defaults();
+	pc_groups_defaults();
 	script_defaults();
 	quest_defaults();
+	storage_defaults();
+	mapindex_defaults();
+	mapreg_defaults();
+	npc_defaults();
+	vending_defaults();
+#ifdef PCRE_SUPPORT
+	npc_chat_defaults();
+#endif
 
 
 	map_config_read(MAP_CONF_NAME);
@@ -5520,9 +5531,12 @@ int do_init(int argc, char *argv[])
 	battle_config_read(BATTLE_CONF_FILENAME);
 	msg_config_read(MSG_CONF_NAME);
 	//lang_config_read(LANG_FILENAME);
-	script_config_read(SCRIPT_CONF_NAME);
+	script->config_read(SCRIPT_CONF_NAME);
 	inter_config_read(INTER_CONF_NAME);
 	log_config_read(LOG_CONF_NAME);
+
+
+	script->config_read(SCRIPT_CONF_NAME);
 
 	id_db = idb_alloc(DB_OPT_BASE);
 	pc_db = idb_alloc(DB_OPT_BASE); //Added for reliable map_id2sd() use. [Skotlex]
@@ -5536,9 +5550,10 @@ int do_init(int argc, char *argv[])
 	iwall_db = strdb_alloc(DB_OPT_RELEASE_DATA,2*NAME_LENGTH+2+1); // [Zephyrus] Invisible Walls
 	zone_db = strdb_alloc(DB_OPT_DUP_KEY|DB_OPT_RELEASE_DATA, MAP_ZONE_NAME_LENGTH);
 
-	map_iterator_ers = ers_new(sizeof(struct s_mapiterator),"map.c::map_iterator_ers",ERS_OPT_NONE);
+	map_iterator_ers = ers_new(sizeof(struct s_mapiterator),"map.c::map_iterator_ers",ERS_OPT_CLEAN|ERS_OPT_FLEX_CHUNK);
+	ers_chunk_size(map_iterator_ers, 25);
 
-	flooritem_ers = ers_new(sizeof(struct flooritem_data),"map.c::map_flooritem_ers",ERS_OPT_NONE);
+	flooritem_ers = ers_new(sizeof(struct flooritem_data),"map.c::map_flooritem_ers",ERS_OPT_CLEAN|ERS_OPT_FLEX_CHUNK);
 	ers_chunk_size(flooritem_ers, 100);
 
 	map_sql_init();
@@ -5547,7 +5562,8 @@ int do_init(int argc, char *argv[])
 
 	db_sql_init();
 
-	mapindex_init();
+	mapindex->init();
+
 	if(enable_grf)
 		grfio_init(GRF_PATH_FILENAME);
 
@@ -5563,7 +5579,7 @@ int do_init(int argc, char *argv[])
 	instance->init();
 	do_init_chrif();
 	do_init_clif();
-	do_init_script();
+	script->init();
 	do_init_itemdb();
 	do_init_skill();
 	read_map_zone_db();/* read after item and skill initalization */
@@ -5571,20 +5587,20 @@ int do_init(int argc, char *argv[])
 	do_init_pc();
 	do_init_status();
 	do_init_party();
-	do_init_guild();
-	do_init_storage();
+	guild->init();
+	gstorage->init();
 	do_init_pet();
 	homun->init();
 	do_init_mercenary();
 	do_init_elemental();
 	quest->init();
-	do_init_npc();
+	npc->init();
 	do_init_unit();
 	do_init_battleground();
-	do_init_duel();
-	do_init_vending();
+	vending->init();
 
-	npc_event_do_oninit();  // Init npcs (OnInit)
+	npc->event_do_oninit();  // Init npcs (OnInit)
+	npc->market_fromsql(); /* after OnInit */
 
 	if(console) {
 		//##TODO invoke a CONSOLE_START plugin event

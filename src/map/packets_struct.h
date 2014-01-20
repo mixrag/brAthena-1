@@ -212,6 +212,8 @@ enum packet_headers {
 	notifybindonequip = 0x2d3,
 	monsterhpType = 0x977,
 	maptypeproperty2Type = 0x99b,
+	npcmarketresultackType = 0x9d7,
+	npcmarketopenType = 0x9d5,
 	
 /******************************************
  *              brAthena                  *
@@ -914,11 +916,52 @@ struct packet_damage {
 #endif
 } __attribute__((packed));
 
+struct packet_gm_monster_item {
+	short PacketType;
+#if PACKETVER >= 20131218
+	char str[100];
+#else
+	char str[24];
+#endif
+} __attribute__((packed));
+
+struct packet_npc_market_purchase {
+	short PacketType;
+	short PacketLength;
+	struct {
+		unsigned short ITID;
+		int qty;
+	} list[MAX_INVENTORY];/* assuming MAX_INVENTORY is max since you can't hold more than MAX_INVENTORY items thus cant buy that many at once. */
+} __attribute__((packed));
+
+struct packet_npc_market_result_ack {
+	short PacketType;
+	short PacketLength;
+	unsigned char result;
+	struct {
+		unsigned short ITID;
+		unsigned short qty;
+		unsigned int price;
+	} list[MAX_INVENTORY];/* assuming MAX_INVENTORY is max since you can't hold more than MAX_INVENTORY items thus cant buy that many at once. */
+} __attribute__((packed));
+
+struct packet_npc_market_open {
+	short PacketType;
+	short PacketLength;
+	/* inner struct figured by Ind after some annoying hour of debugging (data Thanks to Yommy) */
+	struct {
+		unsigned short nameid;
+		unsigned char type;
+		unsigned int price;
+		unsigned int qty;
+		unsigned short view;
+	} list[1000];/* TODO: whats the actual max of this? */
+} __attribute__((packed));
+
 /******************************************
  *               brAthena                 *
  ******************************************/
 struct packet_pcbanglogin {
-#if PACKETVER > 20060424
   short PacketType;
   unsigned long Version;
   unsigned char ID;
@@ -926,30 +969,24 @@ struct packet_pcbanglogin {
   unsigned char ClientType;
   char IP;
   //unsigned char MacAdress[13]
-#endif
 } __attribute__((packed));
  
 struct packet_pcbangnotify {
-#if PACKETVER > 20060424
   short PacketType;
-#endif
 } __attribute__((packed));
 
 struct packet_pcbangplayingtime {
-#if PACKETVER > 20060424
+
 	short PacketType;
 	int TimeMinute;
-#endif
+
 }__attribute__((packed));
 
 struct packet_pcbangeffect {
-#if PACKETVER > 20060424
 	short PacketType;
 	int ExpFactor;
 	int ExpFactor2;
 	int DropFactor;
-#endif
-
 }__attribute__((packed));
  
 #pragma pack(pop)

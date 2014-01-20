@@ -24,7 +24,7 @@
 #include "../common/db.h"
 
 #include "../config/core.h"
-
+#include "../common/sql.h"
 #include "atcommand.h"
 
 #include <stdarg.h>
@@ -32,6 +32,17 @@
 struct npc_data;
 struct item_data;
 struct raChSysCh;
+
+DBMap *id_db; // int id -> struct block_list*
+DBMap *pc_db; // int id -> struct map_session_data*
+DBMap *mobid_db; // int id -> struct mob_data*
+DBMap *bossid_db; // int id -> struct mob_data* (MVP db)
+DBMap *map_db; // unsigned int mapindex -> struct map_data_other_server*
+DBMap *nick_db; // int char_id -> struct charid2nick* (requested names of offline characters)
+DBMap *charid_db; // int char_id -> struct map_session_data*
+DBMap *regen_db; // int id -> struct block_list* (status_natural_heal processing)
+DBMap *at_db;/* char id -> struct autotrade_vending */
+
 
 enum E_MAPSERVER_ST
 {
@@ -762,6 +773,8 @@ struct map_data_other_server {
 int map_getcell(int16 m,int16 x,int16 y,cell_chk cellchk);
 void map_setgatcell(int16 m, int16 x, int16 y, int gat);
 
+struct map_session_data *map_cpsd;
+
 struct map_data *map;
 extern int map_num;
 
@@ -842,11 +855,11 @@ bool map_blid_exists( int id );
 
 struct eri *flooritem_ers;
 
-int16 map_mapindex2mapid(unsigned short mapindex);
+int16 map_mapindex2mapid(unsigned short map_index);
 int16 map_mapname2mapid(const char* name);
 int map_mapname2ipport(unsigned short name, uint32* ip, uint16* port);
-int map_setipport(unsigned short map, uint32 ip, uint16 port);
-int map_eraseipport(unsigned short map, uint32 ip, uint16 port);
+int map_setipport(unsigned short map_index, uint32 ip, uint16 port);
+int map_eraseipport(unsigned short map_index, uint32 ip, uint16 port);
 int map_eraseallipport(void);
 void map_addiddb(struct block_list *);
 void map_deliddb(struct block_list *bl);
@@ -874,6 +887,7 @@ enum e_mapitflags
 	MAPIT_NORMAL = 0,
 //	MAPIT_PCISPLAYING = 1,// Unneeded as pc_db/id_db will only hold auth'ed, active players.
 };
+
 struct s_mapiterator;
 struct s_mapiterator*   mapit_alloc(enum e_mapitflags flags, enum bl_type types);
 void                    mapit_free(struct s_mapiterator* mapit);
@@ -951,7 +965,13 @@ extern char log_db_id[32];
 extern char log_db_pw[32];
 extern char log_db_db[32];
 
+
+
 #endif
+
+char interreg_db[32];
+char autotrade_merchants_db[32];
+char autotrade_data_db[32];
 
 extern char db_ip[32];
 extern int db_port;

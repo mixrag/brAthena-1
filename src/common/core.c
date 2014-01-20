@@ -19,12 +19,12 @@
 #include "../common/malloc.h"
 #include "../common/strlib.h"
 #include "core.h"
+#include "../common/random.h"
 #ifndef MINICORE
 #include "../common/db.h"
 #include "../common/socket.h"
 #include "../common/timer.h"
 #include "../common/thread.h"
-#include "../common/mempool.h"
 #include "../common/sql.h"
 #include "../config/core.h"
 #include "../common/utils.h"
@@ -285,10 +285,17 @@ static void display_title(void)
 	ShowMessage(""CL_PASS"           ("CL_BT_WHITE" | |_) | |  | | | | |_| | | |  __/ | | | (_| | "CL_PASS")"CL_CLL""CL_NORMAL"\n");
 	ShowMessage(""CL_PASS"           ("CL_BT_WHITE" |_.__/|_|  \\_| |_/\\__|_| |_|\\___|_| |_|\\__,_| "CL_PASS")"CL_CLL""CL_NORMAL"\n");
 	ShowMessage(""CL_PASS"           ("CL_BT_WHITE"                                               "CL_PASS""CL_CLL")"CL_NORMAL"\n");
-	ShowMessage(""CL_PASS"           ("CL_BT_GREEN"       Projeto brAthena (c) 2008 - 2013        "CL_PASS")"CL_CLL""CL_NORMAL"\n");
+	ShowMessage(""CL_PASS"           ("CL_BT_GREEN"       Projeto brAthena (c) 2008 - 2014        "CL_PASS")"CL_CLL""CL_NORMAL"\n");
 	ShowMessage(""CL_PASS"           ("CL_BT_GREEN"               www.brathena.org                "CL_PASS")"CL_CLL""CL_NORMAL"\n");
 	ShowMessage(""CL_PASS"           (=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=)"CL_CLL""CL_NORMAL"\n\n");
 
+	if(VERSION == -1)
+		ShowInfo(read_message("Source.common.emulator_mode_ot"), CL_RED, CL_RESET, CL_GREEN, CL_RESET);
+	else if(VERSION == 0)
+		ShowInfo(read_message("Source.common.emulator_mode_pre"), CL_RED, CL_RESET, CL_GREEN, CL_RESET);
+	else if (VERSION == 1)
+		ShowInfo(read_message("Source.common.emulator_mode_re"), CL_RED, CL_RESET, CL_GREEN, CL_RESET);
+	
 	ShowInfo(read_message("Source.common.core_revision"), CL_WHITE, get_svn_revision(), CL_RESET);
 	ShowInfo(read_message("Source.common.client_version1"), CL_RED, CL_RESET, CL_GREEN, PACKETVER, CL_RESET);
 	ShowInfo(read_message("Source.common.client_version2"), CL_RED, CL_RESET);
@@ -308,7 +315,11 @@ void core_defaults(void) {
 #ifndef MINICORE
 	HCache_defaults();
 #endif
+	strlib_defaults();
 	malloc_defaults();
+#ifndef MINICORE
+	db_defaults();
+#endif
 }
 /*======================================
  *  CORE : MAINROUTINE
@@ -343,8 +354,7 @@ int main(int argc, char **argv)
 
 	Sql_Init();
 	rathread_init();
-	mempool_init();
-	db_init();
+	DB->init();
 	signals_init();
 
 #ifdef _WIN32
@@ -370,8 +380,7 @@ int main(int argc, char **argv)
 
 	timer_final();
 	socket_final();
-	db_final();
-	mempool_final();
+	DB->final();
 	rathread_final();
 #endif
 

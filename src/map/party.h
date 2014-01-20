@@ -61,9 +61,9 @@ struct party_booking_detail {
 };
 
 struct party_booking_ad_info {
-	unsigned long index;
+	unsigned int index;
 	char charname[NAME_LENGTH];
-	long expiretime;
+	int expiretime;
 	struct party_booking_detail p_detail;
 };
 #else /* PARTY_RECRUIT */
@@ -73,8 +73,8 @@ struct party_booking_detail {
 };
 
 struct party_booking_ad_info {
-	unsigned long index;
-	long expiretime;
+	unsigned int index;
+	int expiretime;
 	char charname[NAME_LENGTH];
 	struct party_booking_detail p_detail;
 };
@@ -99,7 +99,7 @@ int party_member_withdraw(int party_id,int account_id,int char_id);
 void party_reply_invite(struct map_session_data *sd,int party_id,int flag);
 int party_recv_noinfo(int party_id, int char_id);
 int party_recv_info(struct party *sp, int char_id);
-int party_recv_movemap(int party_id,int account_id,int char_id, unsigned short map,int online,int lv);
+int party_recv_movemap(int party_id,int account_id,int char_id, unsigned short mapid,int online,int lv);
 int party_broken(int party_id);
 int party_optionchanged(int party_id,int account_id,int exp,int item,int flag);
 int party_changeoption(struct map_session_data *sd,int exp,int item);

@@ -390,9 +390,17 @@ int quest_read_db(void) {
 		for(QueryLoop = 0; QueryLoop < 9; ++QueryLoop)
 			Sql_GetData(dbmysql_handle, QueryLoop, &row[QueryLoop], NULL);
 
+		if (row[0] == NULL)
+			continue;
+
 		memset(&entry, 0, sizeof(entry));
 
 		entry.id = atoi(row[0]);
+
+		if (entry.id < 0 || entry.id >= MAX_QUEST_DB) {
+			ShowError("quest_read_db: Invalid quest ID '%d' (min: 0, max: %d.)\n", entry.id, MAX_QUEST_DB);
+			continue;
+		}
 
 		entry.time = atoi(row[1]);
 
@@ -445,9 +453,9 @@ int quest_reload_check_sub(struct map_session_data *sd, va_list ap) {
 		}
 		j++;
 	}
-	sd->num_quests = 0;
-	ARR_FIND(sd->avail_quests, 0, j, sd->quest_log[j].state != Q_COMPLETE);
-	sd->avail_quests = j+1;
+	sd->num_quests = j;
+	ARR_FIND(0, sd->num_quests, i, sd->quest_log[i].state == Q_COMPLETE);
+	sd->avail_quests = i;
 
 	return 1;
 }

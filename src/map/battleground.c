@@ -54,12 +54,12 @@ struct map_session_data *bg_getavailablesd(struct battleground_data *bgd) {
 }
 
 /// Deletes BG Team from db
-int bg_team_delete(int bg_id) {
+bool bg_team_delete(int bg_id) {
 	int i;
 	struct map_session_data *sd;
 	struct battleground_data *bgd = bg_team_search(bg_id);
 
-	if(bgd == NULL) return 0;
+	if(bgd == NULL) return false;
 	for(i = 0; i < MAX_BG_MEMBERS; i++) {
 		if((sd = bgd->members[i].sd) == NULL)
 			continue;
@@ -68,36 +68,35 @@ int bg_team_delete(int bg_id) {
 		sd->bg_id = 0;
 	}
 	idb_remove(bg->team_db, bg_id);
-	return 1;
+	return true;
 }
 
 /// Warps a Team
-int bg_team_warp(int bg_id, unsigned short mapindex, short x, short y) {
+bool bg_team_warp(int bg_id, unsigned short map_index, short x, short y) {
 	int i;
 	struct battleground_data *bgd = bg_team_search(bg_id);
-	if(bgd == NULL) return 0;
+	if(bgd == NULL) return false;
 	for(i = 0; i < MAX_BG_MEMBERS; i++)
-		if(bgd->members[i].sd != NULL) pc_setpos(bgd->members[i].sd, mapindex, x, y, CLR_TELEPORT);
-	return 1;
+		if(bgd->members[i].sd != NULL) pc_setpos(bgd->members[i].sd, map_index, x, y, CLR_TELEPORT);
+	return true;
 }
 
-int bg_send_dot_remove(struct map_session_data *sd)
+void bg_send_dot_remove(struct map_session_data *sd)
 {
 	if(sd && sd->bg_id)
 		clif_bg_xy_remove(sd);
-	return 0;
 }
 
 /// Player joins team
-int bg_team_join(int bg_id, struct map_session_data *sd) {
+bool bg_team_join(int bg_id, struct map_session_data *sd) {
 	int i;
 	struct battleground_data *bgd = bg_team_search(bg_id);
 	struct map_session_data *pl_sd;
 
-	if(bgd == NULL || sd == NULL || sd->bg_id) return 0;
+	if(bgd == NULL || sd == NULL || sd->bg_id) return false;
 
 	ARR_FIND(0, MAX_BG_MEMBERS, i, bgd->members[i].sd == NULL);
-	if(i == MAX_BG_MEMBERS) return 0;   // No free slots
+	if(i == MAX_BG_MEMBERS) return false;   // No free slots
 
 	sd->bg_id = bg_id;
 	bgd->members[i].sd = sd;
@@ -114,7 +113,7 @@ int bg_team_join(int bg_id, struct map_session_data *sd) {
 		memcpy(&bgd->members[i].source,&sd->status.last_point,sizeof(struct point));
 	bgd->count++;
 
-	guild_send_dot_remove(sd);
+	guild->send_dot_remove(sd);
 
 	for(i = 0; i < MAX_BG_MEMBERS; i++) {
 		if((pl_sd = bgd->members[i].sd) != NULL && pl_sd != sd)
@@ -123,7 +122,7 @@ int bg_team_join(int bg_id, struct map_session_data *sd) {
 
 	clif_bg_hp(sd);
 	clif_bg_xy(sd);
-	return 1;
+	return true;
 }
 
 /// Single Player leaves team
@@ -161,7 +160,7 @@ int bg_team_leave(struct map_session_data *sd, int flag) {
 	}
 
 	if(bgd->logout_event[0] && flag)
-		npc_event(sd, bgd->logout_event, 0);
+		npc->event(sd, bgd->logout_event, 0);
 
 	if(sd->bg_queue.arena) {
 		bg->queue_pc_cleanup(sd);
@@ -171,26 +170,26 @@ int bg_team_leave(struct map_session_data *sd, int flag) {
 }
 
 /// Respawn after killed
-int bg_member_respawn(struct map_session_data *sd) {
+bool bg_member_respawn(struct map_session_data *sd) {
 	struct battleground_data *bgd;
 	if(sd == NULL || !pc_isdead(sd) || !sd->bg_id || (bgd = bg_team_search(sd->bg_id)) == NULL)
-		return 0;
+		return false;
 	if(bgd->mapindex == 0)
-		return 0; // Respawn not handled by Core
+		return false; // Respawn not handled by Core
 	pc_setpos(sd, bgd->mapindex, bgd->x, bgd->y, CLR_OUTSIGHT);
 	status_revive(&sd->bl, 1, 100);
 
-	return 1; // Warped
+	return true; // Warped
 }
 
-int bg_create(unsigned short mapindex, short rx, short ry, const char *ev, const char *dev) {
+int bg_create(unsigned short map_index, short rx, short ry, const char *ev, const char *dev) {
 	struct battleground_data *bgd;
 	bg->team_counter++;
 
 	CREATE(bgd, struct battleground_data, 1);
 	bgd->bg_id = bg->team_counter;
 	bgd->count = 0;
-	bgd->mapindex = mapindex;
+	bgd->mapindex = map_index;
 	bgd->x = rx;
 	bgd->y = ry;
 	safestrncpy(bgd->logout_event, ev, sizeof(bgd->logout_event));
@@ -234,24 +233,24 @@ int bg_team_get_id(struct block_list *bl)
 	return 0;
 }
 
-int bg_send_message(struct map_session_data *sd, const char *mes, int len) {
+bool bg_send_message(struct map_session_data *sd, const char *mes, int len) {
 	struct battleground_data *bgd;
 
 	nullpo_ret(sd);
 	if(sd->bg_id == 0 || (bgd = bg_team_search(sd->bg_id)) == NULL)
-		return 0;
+		return false;
 	clif_bg_message(bgd, sd->bl.id, sd->status.name, mes, len);
-	return 0;
+	return true;
 }
 
 /**
  * @see DBApply
  */
 int bg_send_xy_timer_sub(DBKey key, DBData *data, va_list ap) {
-	struct battleground_data *bgd = db_data2ptr(data);
+	struct battleground_data *bgd = DB->data2ptr(data);
 	struct map_session_data *sd;
 	int i;
-	nullpo_ret(bg);
+	nullpo_ret(bgd);
 	for(i = 0; i < MAX_BG_MEMBERS; i++) {
 		if((sd = bgd->members[i].sd) == NULL)
 			continue;
@@ -512,7 +511,7 @@ void bg_match_over(struct bg_arena *arena, bool canceled) {
 			if(canceled)
 				clif_colormes(sd->fd,COLOR_RED,"BG Match Cancelled: not enough players");
 			else {
-				pc_setglobalreg(sd, arena->delay_var, (unsigned int)time(NULL));
+				pc_setglobalreg(sd, script->add_str(arena->delay_var), (unsigned int)time(NULL));
 			}
 		}
 	}
@@ -545,8 +544,8 @@ void bg_begin(struct bg_arena *arena) {
 	} else {
 		arena->ongoing = true;
 		/* TODO: make this a arena-independant var? or just .@? */
-		mapreg_setreg(add_str("$@bg_queue_id"),arena->queue_id);
-		mapreg_setregstr(add_str("$@bg_delay_var$"),bg->gdelay_var);
+		mapreg->setreg(script->add_str("$@bg_queue_id"), arena->queue_id);
+		mapreg->setregstr(script->add_str("$@bg_delay_var$"), bg->gdelay_var);
 
 		count = 0;
 		for(i = 0; i < queue->size; i++) {
@@ -555,14 +554,14 @@ void bg_begin(struct bg_arena *arena) {
 			if(queue->item[i] > 0 && (sd = map_id2sd(queue->item[i]))) {
 				if(sd->bg_queue.ready == 1) {
 
-					mapreg_setreg(reference_uid(add_str("$@bg_member"), count), sd->status.account_id);
+					mapreg->setreg(reference_uid(script->add_str("$@bg_member"), count), sd->status.account_id);
 
-					mapreg_setreg(reference_uid(add_str("$@bg_member_group"), count),
+					mapreg->setreg(reference_uid(script->add_str("$@bg_member_group"), count),
 								   sd->bg_queue.type == BGQT_GUILD ? sd->status.guild_id :
 								   sd->bg_queue.type == BGQT_PARTY ? sd->status.party_id :
 								   0
 								   );
-					mapreg_setreg(reference_uid(add_str("$@bg_member_type"), count),
+					mapreg->setreg(reference_uid(script->add_str("$@bg_member_type"), count),
 								   sd->bg_queue.type == BGQT_GUILD ? 1 :
 								   sd->bg_queue.type == BGQT_PARTY ? 2 :
 								   0
@@ -571,9 +570,9 @@ void bg_begin(struct bg_arena *arena) {
 				}
 			}
 		}
-		mapreg_setreg(add_str("$@bg_member_size"),count);
+		mapreg->setreg(script->add_str("$@bg_member_size"), count);
 
-		npc_event_do(arena->npc_event);
+		npc->event_do(arena->npc_event);
 		/* we split evenly? */
 		/* but if a party of say 10 joins, it cant be split evenly unless by luck there are 10 soloers in the queue besides them */
 		/* not sure how to split T_T needs more info */
@@ -710,7 +709,7 @@ enum BATTLEGROUNDS_QUEUE_ACK bg_canqueue(struct map_session_data *sd, struct bg_
 
 	tsec = (unsigned int)time(NULL);
 
-	if ((tick = pc_readglobalreg(sd, bg->gdelay_var) ) && tsec < tick) {
+	if ((tick = pc_readglobalreg(sd, script->add_str(bg->gdelay_var)) ) && tsec < tick) {
 		char response[100];
 		if((tick-tsec) > 60)
 			sprintf(response, "You are a deserter! Wait %d minute(s) before you can apply again",(tick-tsec)/60);
@@ -720,7 +719,7 @@ enum BATTLEGROUNDS_QUEUE_ACK bg_canqueue(struct map_session_data *sd, struct bg_
 		return BGQA_FAIL_DESERTER;
 	}
 	
-	if ((tick = pc_readglobalreg(sd, arena->delay_var)) && tsec < tick) {
+	if ((tick = pc_readglobalreg(sd, script->add_str(arena->delay_var))) && tsec < tick) {
 		char response[100];
 		if((tick-tsec) > 60)
 			sprintf(response, "You can't reapply to this arena so fast. Apply to the different arena or wait %d minute(s)",(tick-tsec)/60);

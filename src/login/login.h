@@ -8,7 +8,7 @@
 *                                                                            *
 * \file src/login/login.h                                                    *
 * Declarações do Servidor de Entrada (Login).                                *
-* Códigos de declaração para login.c                                         *
+* Códigos de declaração para login.h                                         *
 * \author brAthena, Athena, eAthena                                          *
 * \date ?                                                                    *
 * \todo ?                                                                    *  
@@ -35,8 +35,8 @@ enum E_LOGINSERVER_ST {
 
 struct login_session_data {
 	int account_id;
-	long login_id1;
-	long login_id2;
+	int login_id1;
+	int login_id2;
 	char sex;// 'F','M','S'
 
 	char userid[NAME_LENGTH];
@@ -54,6 +54,8 @@ struct login_session_data {
 	int has_client_hash;
 
 	int fd;
+
+	time_t expiration_time;
 };
 
 struct mmo_char_server {

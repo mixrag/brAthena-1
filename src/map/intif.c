@@ -149,7 +149,7 @@ int intif_rename(struct map_session_data *sd, int type, char *name)
 }
 
 // GM Send a message
-int intif_broadcast(const char *mes, int len, int type)
+int intif_broadcast(const char *mes, size_t len, int type)
 {
 	int lp = (type|BC_COLOR_MASK) ? 4 : 0;
 
@@ -179,7 +179,7 @@ int intif_broadcast(const char *mes, int len, int type)
 	return 0;
 }
 
-int intif_broadcast2(const char *mes, int len, unsigned long fontColor, short fontType, short fontSize, short fontAlign, short fontY)
+int intif_broadcast2(const char *mes, size_t len, unsigned int fontColor, short fontType, short fontSize, short fontAlign, short fontY)
 {
 	// Send to the local players
 	clif_broadcast2(NULL, mes, len, fontColor, fontType, fontSize, fontAlign, fontY, ALL_CLIENT);
@@ -225,7 +225,7 @@ int intif_main_message(struct map_session_data *sd, const char *message)
 }
 
 // The transmission of Wisp/Page to inter-server (player not found on this server)
-int intif_wis_message(struct map_session_data *sd, char *nick, char *mes, int mes_len)
+int intif_wis_message(struct map_session_data *sd, char *nick, char *mes, size_t mes_len)
 {
 	nullpo_ret(sd);
 	if(CheckForCharServer())
@@ -271,7 +271,7 @@ int intif_wis_replay(int id, int flag)
 // The transmission of GM only Wisp/Page from server to inter-server
 int intif_wis_message_to_gm(char *wisp_name, int permission, char *mes)
 {
-	int mes_len;
+	size_t mes_len;
 	if(CheckForCharServer())
 		return 0;
 	mes_len = strlen(mes) + 1; // + null
@@ -289,60 +289,117 @@ int intif_wis_message_to_gm(char *wisp_name, int permission, char *mes)
 	return 0;
 }
 
-int intif_regtostr(char *str, struct global_reg *reg, int qty)
-{
-	int len =0, i;
-
-	for(i = 0; i < qty; i++) {
-		len+= sprintf(str+len, "%s", reg[i].str)+1; //We add 1 to consider the '\0' in place.
-		len+= sprintf(str+len, "%s", reg[i].value)+1;
-	}
-	return len;
-}
-
 //Request for saving registry values.
-int intif_saveregistry(struct map_session_data *sd, int type)
-{
-	struct global_reg *reg;
-	int count;
-	int i, p;
+int intif_saveregistry(struct map_session_data *sd) {
+	DBIterator *iter;
+	DBKey key;
+	DBData *data;
+	int plen = 0;
+	size_t len;
 
-	if(CheckForCharServer())
+	if (CheckForCharServer())
 		return -1;
 
-	switch(type) {
-		case 3: //Character reg
-			reg = sd->save_reg.global;
-			count = sd->save_reg.global_num;
-			sd->state.reg_dirty &= ~0x4;
-			break;
-		case 2: //Account reg
-			reg = sd->save_reg.account;
-			count = sd->save_reg.account_num;
-			sd->state.reg_dirty &= ~0x2;
-			break;
-		case 1: //Account2 reg
-			reg = sd->save_reg.account2;
-			count = sd->save_reg.account2_num;
-			sd->state.reg_dirty &= ~0x1;
-			break;
-		default: //Broken code?
-			ShowError("intif_saveregistry: Invalid type %d\n", type);
-			return -1;
-	}
-	WFIFOHEAD(inter_fd, 288 * MAX_REG_NUM+13);
-	WFIFOW(inter_fd,0)=0x3004;
-	WFIFOL(inter_fd,4)=sd->status.account_id;
-	WFIFOL(inter_fd,8)=sd->status.char_id;
-	WFIFOB(inter_fd,12)=type;
-	for(p = 13, i = 0; i < count; i++) {
-		if(reg[i].str[0] != '\0' && reg[i].value[0] != '\0') {
-			p+= sprintf((char *)WFIFOP(inter_fd,p), "%s", reg[i].str)+1; //We add 1 to consider the '\0' in place.
-			p+= sprintf((char *)WFIFOP(inter_fd,p), "%s", reg[i].value)+1;
+	WFIFOHEAD(inter_fd, 60000 + 300);
+	WFIFOW(inter_fd,0)  = 0x3004;
+	/* 0x2 = length (set later) */
+	WFIFOL(inter_fd,4)  = sd->status.account_id;
+	WFIFOL(inter_fd,8)  = sd->status.char_id;
+	WFIFOW(inter_fd,12) = 0;/* count */
+
+	plen = 14;
+
+	iter = db_iterator(sd->var_db);
+	for(data = iter->first(iter,&key); iter->exists(iter); data = iter->next(iter,&key)) {
+		const char *varname = NULL;
+		struct script_reg_state *src = NULL;
+
+		if(data->type != DB_DATA_PTR) /* its a @number */
+			continue;
+
+		varname = script->get_str(script_getvarid(key.i64));
+
+		if( varname[0] == '@' ) /* @string$ can get here, so we skip */
+			continue;
+
+		src = DB->data2ptr(data);
+
+		/* no need! */
+		if( !src->update )
+			continue;
+
+		src->update = false;
+
+		len = strlen(varname)+1;
+
+		WFIFOB(inter_fd, plen) = (unsigned char)len;/* won't be higher; the column size is 32 */
+		plen += 1;
+
+		safestrncpy((char*)WFIFOP(inter_fd,plen), varname, len);
+		plen += len;
+
+		WFIFOL(inter_fd, plen) = script_getvaridx(key.i64);
+		plen += 4;
+
+		if(src->type) {
+			struct script_reg_str *p = (struct script_reg_str *)src;
+
+			WFIFOB(inter_fd, plen) = p->value ? 2 : 3;
+			plen += 1;
+
+			if(p->value) {
+				len = strlen(p->value)+1;
+
+				WFIFOB(inter_fd, plen) = (unsigned char)len;/* won't be higher; the column size is 254 */
+				plen += 1;
+
+				safestrncpy((char*)WFIFOP(inter_fd,plen), p->value, len);
+				plen += len;
+			} else {
+				script->reg_destroy_single(sd,key.i64,&p->flag);
+			}
+
+		} else {
+			struct script_reg_num *p = (struct script_reg_num *)src;
+
+			WFIFOB(inter_fd, plen) =  p->value ? 0 : 1;
+			plen += 1;
+
+			if(p->value) {
+				WFIFOL(inter_fd, plen) = p->value;
+				plen += 4;
+			} else {
+				script->reg_destroy_single(sd,key.i64,&p->flag);
+			}
+			
 		}
+
+		WFIFOW(inter_fd,12) += 1;
+
+		if(plen > 60000) {
+			WFIFOW(inter_fd, 2) = plen;
+			WFIFOSET(inter_fd, plen);
+
+			/* prepare follow up */
+			WFIFOHEAD(inter_fd, 60000 + 300);
+			WFIFOW(inter_fd,0)  = 0x3004;
+			/* 0x2 = length (set later) */
+			WFIFOL(inter_fd,4)  = sd->status.account_id;
+			WFIFOL(inter_fd,8)  = sd->status.char_id;
+			WFIFOW(inter_fd,12) = 0;/* count */
+
+			plen = 14;
+		}
+
 	}
-	WFIFOW(inter_fd,2)=p;
-	WFIFOSET(inter_fd,WFIFOW(inter_fd,2));
+	dbi_destroy(iter);
+
+	/* mark & go. */
+	WFIFOW(inter_fd, 2) = plen;
+	WFIFOSET(inter_fd, plen);
+
+	sd->vars_dirty = false;
+
 	return 0;
 }
 
@@ -351,10 +408,7 @@ int intif_request_registry(struct map_session_data *sd, int flag)
 {
 	nullpo_ret(sd);
 
-	sd->save_reg.account2_num = -1;
-	sd->save_reg.account_num = -1;
-	sd->save_reg.global_num = -1;
-
+	/* if char server aint online it doesn't load, shouldn't we kill the session then? */
 	if(CheckForCharServer())
 		return 0;
 
@@ -472,7 +526,7 @@ int intif_party_leave(int party_id,int account_id, int char_id)
 // Request keeping party for new map ??
 int intif_party_changemap(struct map_session_data *sd,int online)
 {
-	int16 m, mapindex;
+	int16 m, map_index;
 
 	if(CheckForCharServer())
 		return 0;
@@ -480,16 +534,16 @@ int intif_party_changemap(struct map_session_data *sd,int online)
 		return 0;
 
 	if((m=map_mapindex2mapid(sd->mapindex)) >= 0 && map[m].instance_id >= 0)
-		mapindex = map_id2index(map[m].instance_src_map);
+		map_index = map_id2index(map[m].instance_src_map);
 	else
-		mapindex = sd->mapindex;
+		map_index = sd->mapindex;
 
 	WFIFOHEAD(inter_fd,19);
 	WFIFOW(inter_fd,0)=0x3025;
 	WFIFOL(inter_fd,2)=sd->status.party_id;
 	WFIFOL(inter_fd,6)=sd->status.account_id;
 	WFIFOL(inter_fd,10)=sd->status.char_id;
-	WFIFOW(inter_fd,14)=mapindex;
+	WFIFOW(inter_fd,14)=map_index;
 	WFIFOB(inter_fd,16)=online;
 	WFIFOW(inter_fd,17)=sd->status.base_level;
 	WFIFOSET(inter_fd,19);
@@ -585,7 +639,7 @@ int intif_guild_addmember(int guild_id,struct guild_member *m)
 }
 
 // Request a new leader for guild
-int intif_guild_change_gm(int guild_id, const char *name, int len)
+int intif_guild_change_gm(int guild_id, const char *name, size_t len)
 {
 	if(CheckForCharServer())
 		return 0;
@@ -955,58 +1009,96 @@ int mapif_parse_WisToGM(int fd)
 }
 
 // Request player registre
-int intif_parse_Registers(int fd)
+void intif_parse_Registers(int fd)
 {
-	int j,p,len,max, flag;
+	int i, flag;
 	struct map_session_data *sd;
-	struct global_reg *reg;
-	int *qty;
 	int account_id = RFIFOL(fd,4), char_id = RFIFOL(fd,8);
 	struct auth_node *node = chrif_auth_check(account_id, char_id, ST_LOGIN);
+	char type = RFIFOB(fd, 13);
+
 	if(node)
 		sd = node->sd;
 	else { //Normally registries should arrive for in log-in chars.
 		sd = map_id2sd(account_id);
-		if(sd && RFIFOB(fd,12) == 3 && sd->status.char_id != char_id)
-			sd = NULL; //Character registry from another character.
 	}
-	if(!sd) return 1;
 
-	flag = (sd->save_reg.global_num == -1 || sd->save_reg.account_num == -1 || sd->save_reg.account2_num == -1);
+	if(!sd || sd->status.char_id != char_id) {
+		return; //Character registry from another character.
+	}
+
+	flag = (sd->vars_received&PRL_ACCG && sd->vars_received&PRL_ACCL && sd->vars_received&PRL_CHAR) ? 0 : 1;
 
 	switch(RFIFOB(fd,12)) {
 		case 3: //Character Registry
-			reg = sd->save_reg.global;
-			qty = &sd->save_reg.global_num;
-			max = GLOBAL_REG_NUM;
+			sd->vars_received |= PRL_CHAR;
 			break;
 		case 2: //Account Registry
-			reg = sd->save_reg.account;
-			qty = &sd->save_reg.account_num;
-			max = ACCOUNT_REG_NUM;
+			sd->vars_received |= PRL_ACCL;
 			break;
 		case 1: //Account2 Registry
-			reg = sd->save_reg.account2;
-			qty = &sd->save_reg.account2_num;
-			max = ACCOUNT_REG2_NUM;
+			sd->vars_received |= PRL_ACCG;
+			break;
+		case 0:
 			break;
 		default:
 			ShowError("intif_parse_Registers: Unrecognized type %d\n",RFIFOB(fd,12));
-			return 0;
+			return;
 	}
-	for(j=0,p=13; j<max && p<RFIFOW(fd,2); j++) {
-		sscanf((char *)RFIFOP(fd,p), "%31c%n", reg[j].str,&len);
-		reg[j].str[len]='\0';
-		p += len+1; //+1 to skip the '\0' between strings.
-		sscanf((char *)RFIFOP(fd,p), "%255c%n", reg[j].value,&len);
-		reg[j].value[len]='\0';
-		p += len+1;
-	}
-	*qty = j;
+	/* have it not complain about insertion of vars before loading, and not set those vars as new or modified */
+	pc_reg_load = true;
 
-	if(flag && sd->save_reg.global_num > -1 && sd->save_reg.account_num > -1 && sd->save_reg.account2_num > -1)
+	if(RFIFOW(fd, 14)) {
+		char key[32], sval[254];
+		unsigned int index;
+		int max = RFIFOW(fd, 14), cursor = 16, ival;
+
+		/**
+		 * Vessel!char_reg_num_db
+		 *
+		 * str type
+		 * { keyLength(B), key(<keyLength>), index(L), valLength(B), val(<valLength>) }
+		 **/
+		if(type) {
+			for(i = 0; i < max; i++) {
+				safestrncpy(key, (char*)RFIFOP(fd, cursor + 1), RFIFOB(fd, cursor));
+				cursor += RFIFOB(fd, cursor) + 1;
+
+				index = RFIFOL(fd, cursor);
+				cursor += 4;
+
+				safestrncpy(sval, (char*)RFIFOP(fd, cursor + 1), RFIFOB(fd, cursor));
+				cursor += RFIFOB(fd, cursor) + 1;
+								
+				script->set_reg(NULL,sd,reference_uid(script->add_str(key), index), key, (void*)sval, NULL);
+			}
+		/**
+		 * Vessel!
+		 *
+		 * int type
+		 * { keyLength(B), key(<keyLength>), index(L), value(L) }
+		 **/
+		} else {
+			for(i = 0; i < max; i++) {
+				safestrncpy(key, (char*)RFIFOP(fd, cursor + 1), RFIFOB(fd, cursor));
+				cursor += RFIFOB(fd, cursor) + 1;
+
+				index = RFIFOL(fd, cursor);
+				cursor += 4;
+
+				ival = RFIFOL(fd, cursor);
+				cursor += 4;
+								
+				script->set_reg(NULL, sd, reference_uid(script->add_str(key), index), key, (void*)__64BPRTSIZE(ival), NULL);
+			}
+		}
+	}
+
+	/* flag it back */
+	pc_reg_load = false;
+
+	if (flag && sd->vars_received&PRL_ACCG && sd->vars_received&PRL_ACCL && sd->vars_received&PRL_CHAR)
 		pc_reg_received(sd); //Received all registry values, execute init scripts and what-not. [Skotlex]
-	return 1;
 }
 
 void intif_parse_LoadGuildStorage(int fd)
@@ -1026,7 +1118,7 @@ void intif_parse_LoadGuildStorage(int fd)
 			return;
 		}
 	}
-	gstor=guild2storage(guild_id);
+	gstor = gstorage->id2storage(guild_id);
 	if(!gstor) {
 		ShowWarning("intif_parse_LoadGuildStorage: error guild_id %d not exist\n",guild_id);
 		return;
@@ -1040,21 +1132,20 @@ void intif_parse_LoadGuildStorage(int fd)
 		return;
 	}
 	if(RFIFOW(fd,2)-13 != sizeof(struct guild_storage)) {
-		ShowError("intif_parse_LoadGuildStorage: data size error %d %d\n",RFIFOW(fd,2)-12 , sizeof(struct guild_storage));
+		ShowError("intif_parse_LoadGuildStorage: data size error %d %d\n",RFIFOW(fd,2)-13 , sizeof(struct guild_storage));
 		gstor->storage_status = 0;
 		return;
 	}
 
-	memcpy(gstor,RFIFOP(fd,12),sizeof(struct guild_storage));
+	memcpy(gstor,RFIFOP(fd,13),sizeof(struct guild_storage));
 	if(flag)
-		storage_guild_storageopen(sd);
-		return;
+		gstorage->open(sd);
 }
 
 // ACK guild_storage saved
 int intif_parse_SaveGuildStorage(int fd)
 {
-	storage_guild_storagesaved(/*RFIFOL(fd,2), */RFIFOL(fd,6));
+	gstorage->saved(/*RFIFOL(fd,2), */RFIFOL(fd, 6));
 	return 0;
 }
 
@@ -1131,7 +1222,7 @@ int intif_parse_PartyMessage(int fd)
 // ACK guild creation
 int intif_parse_GuildCreated(int fd)
 {
-	guild_created(RFIFOL(fd,2),RFIFOL(fd,6));
+	guild->created(RFIFOL(fd, 2), RFIFOL(fd, 6));
 	return 0;
 }
 
@@ -1140,12 +1231,12 @@ int intif_parse_GuildInfo(int fd)
 {
 	if(RFIFOW(fd,2) == 8) {
 		ShowWarning("intif: guild noinfo %d\n",RFIFOL(fd,4));
-		guild_recv_noinfo(RFIFOL(fd,4));
+		guild->recv_noinfo(RFIFOL(fd, 4));
 		return 0;
 	}
 	if(RFIFOW(fd,2)!=sizeof(struct guild)+4)
 		ShowError("intif: guild info : data size error Gid: %d recv size: %d Expected size: %d\n",RFIFOL(fd,4),RFIFOW(fd,2),sizeof(struct guild)+4);
-	guild_recv_info((struct guild *)RFIFOP(fd,4));
+	guild->recv_info((struct guild *)RFIFOP(fd, 4));
 	return 0;
 }
 
@@ -1154,28 +1245,28 @@ int intif_parse_GuildMemberAdded(int fd)
 {
 	if(battle_config.etc_log)
 		ShowInfo("intif: guild member added %d %d %d %d\n",RFIFOL(fd,2),RFIFOL(fd,6),RFIFOL(fd,10),RFIFOB(fd,14));
-	guild_member_added(RFIFOL(fd,2),RFIFOL(fd,6),RFIFOL(fd,10),RFIFOB(fd,14));
+	guild->member_added(RFIFOL(fd, 2), RFIFOL(fd, 6), RFIFOL(fd, 10), RFIFOB(fd, 14));
 	return 0;
 }
 
 // ACK member leaving guild
 int intif_parse_GuildMemberWithdraw(int fd)
 {
-	guild_member_withdraw(RFIFOL(fd,2),RFIFOL(fd,6),RFIFOL(fd,10),RFIFOB(fd,14),(char *)RFIFOP(fd,55),(char *)RFIFOP(fd,15));
+	guild->member_withdraw(RFIFOL(fd, 2), RFIFOL(fd, 6), RFIFOL(fd, 10), RFIFOB(fd, 14), (char *)RFIFOP(fd, 55), (char *)RFIFOP(fd, 15));
 	return 0;
 }
 
 // ACK guild member basic info
 int intif_parse_GuildMemberInfoShort(int fd)
 {
-	guild_recv_memberinfoshort(RFIFOL(fd,2),RFIFOL(fd,6),RFIFOL(fd,10),RFIFOB(fd,14),RFIFOW(fd,15),RFIFOW(fd,17));
+	guild->recv_memberinfoshort(RFIFOL(fd, 2), RFIFOL(fd, 6), RFIFOL(fd, 10), RFIFOB(fd, 14), RFIFOW(fd, 15), RFIFOW(fd, 17));
 	return 0;
 }
 
 // ACK guild break
 int intif_parse_GuildBroken(int fd)
 {
-	guild_broken(RFIFOL(fd,2),RFIFOB(fd,6));
+	guild->broken(RFIFOL(fd, 2), RFIFOB(fd, 6));
 	return 0;
 }
 
@@ -1188,7 +1279,7 @@ int intif_parse_GuildBasicInfoChanged(int fd)
 	int type = RFIFOW(fd,8);
 	//void* data = RFIFOP(fd,10);
 
-	struct guild *g = guild_search(guild_id);
+	struct guild *g = guild->search(guild_id);
 	if(g == NULL)
 		return 0;
 
@@ -1215,16 +1306,16 @@ int intif_parse_GuildMemberInfoChanged(int fd)
 	struct guild *g;
 	int idx;
 
-	g = guild_search(guild_id);
+	g = guild->search(guild_id);
 	if(g == NULL)
 		return 0;
 
-	idx = guild_getindex(g,account_id,char_id);
+	idx = guild->getindex(g, account_id, char_id);
 	if(idx == -1)
 		return 0;
 
 	switch(type) {
-		case GMI_POSITION:   g->member[idx].position   = RFIFOW(fd,18); guild_memberposition_changed(g,idx,RFIFOW(fd,18)); break;
+		case GMI_POSITION:   g->member[idx].position   = RFIFOW(fd,18); guild->memberposition_changed(g,idx,RFIFOW(fd,18)); break;
 		case GMI_EXP:        g->member[idx].exp        = RFIFOQ(fd,18); break;
 		case GMI_HAIR:       g->member[idx].hair       = RFIFOW(fd,18); break;
 		case GMI_HAIR_COLOR: g->member[idx].hair_color = RFIFOW(fd,18); break;
@@ -1240,55 +1331,55 @@ int intif_parse_GuildPosition(int fd)
 {
 	if(RFIFOW(fd,2)!=sizeof(struct guild_position)+12)
 		ShowError("intif: guild info : data size error\n %d %d %d",RFIFOL(fd,4),RFIFOW(fd,2),sizeof(struct guild_position)+12);
-	guild_position_changed(RFIFOL(fd,4),RFIFOL(fd,8),(struct guild_position *)RFIFOP(fd,12));
+	guild->position_changed(RFIFOL(fd, 4), RFIFOL(fd, 8), (struct guild_position *)RFIFOP(fd, 12));
 	return 0;
 }
 
 // ACK change of guild skill update
 int intif_parse_GuildSkillUp(int fd)
 {
-	guild_skillupack(RFIFOL(fd,2),RFIFOL(fd,6),RFIFOL(fd,10));
+	guild->skillupack(RFIFOL(fd, 2), RFIFOL(fd, 6), RFIFOL(fd, 10));
 	return 0;
 }
 
 // ACK change of guild relationship
 int intif_parse_GuildAlliance(int fd)
 {
-	guild_allianceack(RFIFOL(fd,2),RFIFOL(fd,6),RFIFOL(fd,10),RFIFOL(fd,14),RFIFOB(fd,18),(char *) RFIFOP(fd,19),(char *) RFIFOP(fd,43));
+	guild->allianceack(RFIFOL(fd, 2), RFIFOL(fd, 6), RFIFOL(fd, 10), RFIFOL(fd, 14), RFIFOB(fd, 18), (char *)RFIFOP(fd, 19), (char *)RFIFOP(fd, 43));
 	return 0;
 }
 
 // ACK change of guild notice
 int intif_parse_GuildNotice(int fd)
 {
-	guild_notice_changed(RFIFOL(fd,2),(char *) RFIFOP(fd,6),(char *) RFIFOP(fd,66));
+	guild->notice_changed(RFIFOL(fd, 2), (char *)RFIFOP(fd, 6), (char *)RFIFOP(fd, 66));
 	return 0;
 }
 
 // ACK change of guild emblem
 int intif_parse_GuildEmblem(int fd)
 {
-	guild_emblem_changed(RFIFOW(fd,2)-12,RFIFOL(fd,4),RFIFOL(fd,8), (char *)RFIFOP(fd,12));
+	guild->emblem_changed(RFIFOW(fd, 2) - 12, RFIFOL(fd, 4), RFIFOL(fd, 8), (char *)RFIFOP(fd, 12));
 	return 0;
 }
 
 // ACK guild message
 int intif_parse_GuildMessage(int fd)
 {
-	guild_recv_message(RFIFOL(fd,4),RFIFOL(fd,8),(char *) RFIFOP(fd,12),RFIFOW(fd,2)-12);
+	guild->recv_message(RFIFOL(fd, 4), RFIFOL(fd, 8), (char *)RFIFOP(fd, 12), RFIFOW(fd, 2) - 12);
 	return 0;
 }
 
 // Reply guild castle data request
 int intif_parse_GuildCastleDataLoad(int fd)
 {
-	return guild_castledataloadack(RFIFOW(fd,2), (struct guild_castle *)RFIFOP(fd,4));
+	return guild->castledataloadack(RFIFOW(fd, 2), (struct guild_castle *)RFIFOP(fd, 4));
 }
 
 // ACK change of guildmaster
 int intif_parse_GuildMasterChanged(int fd)
 {
-	return guild_gm_changed(RFIFOL(fd,2),RFIFOL(fd,6),RFIFOL(fd,10));
+	return guild->gm_changed(RFIFOL(fd, 2), RFIFOL(fd, 6), RFIFOL(fd, 10));
 }
 
 // Request pet creation
@@ -1430,12 +1521,13 @@ void intif_parse_questlog(int fd)
 	if (!sd) // User not online anymore
 		return;
 
+	sd->num_quests = sd->avail_quests = 0;
+
 	if (num_received == 0) {
 		if (sd->quest_log) {
 			aFree(sd->quest_log);
 			sd->quest_log = NULL;
 		}
-		sd->num_quests = sd->avail_quests = 0;
 	} else {
 		struct quest *received = (struct quest *)RFIFOP(fd, 8);
 		int i, k = num_received;
@@ -1450,7 +1542,7 @@ void intif_parse_questlog(int fd)
 				ShowError("intif_parse_QuestLog: quest %d not found in DB.\n", received[i].quest_id);
 				continue;
 			}
-			if (received->state != Q_COMPLETE) {
+			if (received[i].state != Q_COMPLETE) {
 				// Insert at the beginning
 				memcpy(&sd->quest_log[sd->avail_quests++], &received[i], sizeof(struct quest));
 			} else {
@@ -2172,7 +2264,7 @@ void intif_parse_MessageToFD(int fd) {
  *------------------------------------------*/
 void intif_itembound_req(int char_id,int aid,int guild_id) {
 #ifdef GP_BOUND_ITEMS
-	struct guild_storage *gstor = guild2storage2(guild_id);
+	struct guild_storage *gstor = gstorage->id2storage2(guild_id);
 	WFIFOHEAD(inter_fd,12);
 	WFIFOW(inter_fd,0) = 0x3056;
 	WFIFOL(inter_fd,2) = char_id;
@@ -2190,7 +2282,7 @@ void intif_parse_Itembound_ack(int fd) {
 	struct guild_storage *gstor;
 	int guild_id = RFIFOW(fd,6);
 
-	gstor = guild2storage2(guild_id);
+	gstor = gstorage->id2storage2(guild_id);
 	if(gstor)
 		gstor->lock = 0; //Unlock now that operation is completed
 #endif
@@ -2282,7 +2374,7 @@ int intif_parse(int fd)
 #ifdef GP_BOUND_ITEMS
 			intif_parse_Itembound_ack(fd);
 #else
-			ShowWarning("intif_parse: Received 0x3856 with GP_BOUND_ITEMS disabled !!!\n")
+			ShowWarning("intif_parse: Received 0x3856 with GP_BOUND_ITEMS disabled !!!\n");
 #endif
 			break;
 // Mercenary System

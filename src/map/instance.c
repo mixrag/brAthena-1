@@ -87,7 +87,7 @@ int instance_create(int owner_id, const char *name, enum instance_owner_type typ
 			icptr = &p->instances;
 			break;
 		case IOT_GUILD:
-			if((g = guild_search(owner_id) ) == NULL) {
+			if((g = guild->search(owner_id) ) == NULL) {
 				ShowError("instance_create: guild %d not found for instance '%s'.\n", owner_id, name);
 				return -2;
 			}
@@ -121,7 +121,8 @@ int instance_create(int owner_id, const char *name, enum instance_owner_type typ
 	instance->list[i].num_map = 0;
 	instance->list[i].owner_id = owner_id;
 	instance->list[i].owner_type = type;
-	instance->list[i].vars = idb_alloc(DB_OPT_RELEASE_DATA);
+	instance->list[i].vars = i64db_alloc(DB_OPT_RELEASE_DATA);
+	instance->list[i].array_db = NULL;
 	instance->list[i].respawn.map = 0;
 	instance->list[i].respawn.y = 0;
 	instance->list[i].respawn.x = 0;
@@ -169,7 +170,7 @@ int instance_add_map(const char *name, int instance_id, bool usebasename, const 
 		return -1;
 	}
 
-	if(map_name != NULL && strdb_iget(mapindex_db, map_name)) {
+	if (map_name != NULL && strdb_iget(mapindex->db, map_name)) {
 		ShowError("instance_add_map: trying to create instanced map with existent name '%s'\n", map_name);
 		return -2;
 	}
@@ -197,7 +198,7 @@ int instance_add_map(const char *name, int instance_id, bool usebasename, const 
 		map[im].custom_name = true;
 	} else
 		snprintf(map[im].name, MAP_NAME_LENGTH, (usebasename ? "%.3d#%s" : "%.3d%s"), instance_id, name); // Generate Name for Instance Map
-	map[im].index = mapindex_addmap(-1, map[im].name); // Add map index
+	map[im].index = mapindex->addmap(-1, map[im].name); // Add map index
 
 	map[im].channel = NULL;
 
@@ -337,7 +338,7 @@ int instance_map_npcsub(struct block_list *bl, va_list args)
 	struct npc_data *nd = (struct npc_data *)bl;
 	int16 m = va_arg(args, int); // Destination Map
 
-	if (npc_duplicate4instance(nd, m))
+	if (npc->duplicate4instance(nd, m))
 		ShowDebug("instance_map_npcsub:npc_duplicate4instance failed (%s/%d)\n",nd->name,m);
 
 	return 1;
@@ -350,8 +351,8 @@ int instance_init_npc(struct block_list* bl, va_list args) {
 
 	snprintf(evname, EVENT_NAME_LENGTH, "%s::OnInstanceInit", nd->exname);
 
-	if((ev = strdb_get(ev_db, evname)))
-		run_script(ev->nd->u.scr.script, ev->pos, 0, ev->nd->bl.id);
+	if((ev = strdb_get(npc->ev_db, evname)))
+		script->run(ev->nd->u.scr.script, ev->pos, 0, ev->nd->bl.id);
 
 	return 1;
 }
@@ -399,7 +400,7 @@ int instance_cleanup_sub(struct block_list *bl, va_list ap)
 			map_quit((struct map_session_data *) bl);
 			break;
 		case BL_NPC:
-			npc_unload((struct npc_data *)bl,true);
+			npc->unload((struct npc_data *)bl,true);
 			break;
 		case BL_MOB:
 			unit_free(bl,CLR_OUTSIGHT);
@@ -436,7 +437,7 @@ void instance_del_map(int16 m)
 	if(map[m].mob_delete_timer != INVALID_TIMER)
 		delete_timer(map[m].mob_delete_timer, map_removemobs_timer);
 
-	mapindex_removemap(map_id2index(m));
+	mapindex->removemap(map_id2index(m));
 
 	// Free memory
 	aFree(map[m].cell);
@@ -544,7 +545,7 @@ void instance_destroy(int instance_id) {
 			icptr = &p->instances;
 			break;
 		case IOT_GUILD:
-			if((g = guild_search(instance->list[instance_id].owner_id)) == NULL) {
+			if((g = guild->search(instance->list[instance_id].owner_id)) == NULL) {
 				break;
 			}
 			iptr = g->instance;
@@ -568,6 +569,8 @@ void instance_destroy(int instance_id) {
 
 	if(instance->list[instance_id].vars)
 		db_destroy(instance->list[instance_id].vars);
+	if( instance->list[instance_id].array_db )
+		instance->list[instance_id].array_db->destroy(instance->list[instance_id].array_db,script->array_free_db);
 
 	if(instance->list[instance_id].progress_timer != INVALID_TIMER)
 		delete_timer(instance->list[instance_id].progress_timer, instance->destroy_timer);

@@ -295,10 +295,10 @@ int skill_check_condition_char_sub(struct block_list *bl, va_list ap);
 
 int skill_name2id(const char *name);
 
-int skill_isammotype(struct map_session_data *sd, int skill);
+int skill_isammotype(struct map_session_data *sd, int skill_id);
 int skill_castend_id(int tid, int64 tick, int id, intptr_t data);
 int skill_castend_pos(int tid, int64 tick, int id, intptr_t data);
-int skill_castend_map(struct map_session_data *sd,uint16 skill_id, const char *map);
+int skill_castend_map(struct map_session_data *sd,uint16 skill_id, const char *mapname);
 
 int skill_cleartimerskill(struct block_list *src);
 int skill_addtimerskill(struct block_list *src,int64 tick,int target,int x,int y,uint16 skill_id,uint16 skill_lv,int type,int flag);
@@ -349,7 +349,6 @@ int skill_castcancel(struct block_list *bl,int type);
 
 int skill_sit(struct map_session_data *sd, int type);
 void skill_brandishspear(struct block_list *src, struct block_list *bl, uint16 skill_id, uint16 skill_lv, int64 tick, int flag);
-void skill_overbrand(struct block_list *src, uint16 skill_id, uint16 skill_lv, uint16 x, uint16 y, int64 tick, int flag);
 void skill_repairweapon(struct map_session_data *sd, int idx);
 void skill_identify(struct map_session_data *sd,int idx);
 void skill_weaponrefine(struct map_session_data *sd,int idx); // [Celest]
@@ -2029,7 +2028,7 @@ int skill_unit_onplace(struct skill_unit *src,struct block_list *bl,int64 tick);
 int skill_unit_onleft(uint16 skill_id, struct block_list *bl,int64 tick);
 int skill_unit_effect(struct block_list *bl,va_list ap);
 
-static DBMap* bowling_db; // int mob_id -> struct mob_data*
+DBMap* bowling_db; // int mob_id -> struct mob_data*
 
 DBMap *skillunit_db; // int id -> struct skill_unit*
 

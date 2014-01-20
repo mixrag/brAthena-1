@@ -44,7 +44,7 @@
 
 static DBMap *party_db; // int party_id -> struct party_data* (releases data)
 static DBMap *party_booking_db; // int char_id -> struct party_booking_ad_info* (releases data) // Party Booking [Spiria]
-static unsigned long party_booking_nextid = 1;
+static unsigned int party_booking_nextid = 1;
 
 /*==========================================
  * Fills the given party_member structure according to the sd provided.
@@ -114,7 +114,7 @@ static TBL_PC *party_sd_check(int party_id, int account_id, int char_id)
 int party_db_final(DBKey key, DBData *data, va_list ap) {
 	struct party_data *p;
 	
-	if( ( p = db_data2ptr(data) ) && p->instance )
+	if((p = DB->data2ptr(data)) && p->instance)
 		aFree(p->instance);
 	
 	return 0;
@@ -596,7 +596,7 @@ int party_member_withdraw(int party_id, int account_id, int char_id)
 		sd->status.party_id = 0;
 		clif_charnameupdate(sd); //Update name display [Skotlex]
 		//TODO: hp bars should be cleared too
-		if(p->instances)
+		if(p && p->instances)
 			instance->check_kick(sd);
 	}
 	if (sd && sd->sc.data[SC_DANCING]) {
@@ -721,7 +721,7 @@ bool party_changeleader(struct map_session_data *sd, struct map_session_data *ts
 /// - changes maps
 /// - logs in or out
 /// - gains a level (disabled)
-int party_recv_movemap(int party_id,int account_id,int char_id, unsigned short map,int online,int lv)
+int party_recv_movemap(int party_id,int account_id,int char_id, unsigned short mapid,int online,int lv)
 {
 	struct party_member *m;
 	struct party_data *p;
@@ -738,7 +738,7 @@ int party_recv_movemap(int party_id,int account_id,int char_id, unsigned short m
 	}
 
 	m = &p->party.member[i];
-	m->map = map;
+	m->map = mapid;
 	m->online = online;
 	m->lv = lv;
 	//Check if they still exist on this map server

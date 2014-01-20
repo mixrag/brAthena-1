@@ -45,7 +45,7 @@ struct itemdb_interface itemdb_s;
  */
 static int itemdb_searchname_sub(DBKey key, DBData *data, va_list ap)
 {
-	struct item_data *item = db_data2ptr(data), **dst, **dst2;
+	struct item_data *item = DB->data2ptr(data), **dst, **dst2;
 	char *str;
 	str=va_arg(ap,char *);
 	dst=va_arg(ap,struct item_data **);
@@ -54,7 +54,9 @@ static int itemdb_searchname_sub(DBKey key, DBData *data, va_list ap)
 
 	//Absolute priority to Aegis code name.
 	if(*dst != NULL) return 0;
-	if(strcmp(item->name,str)==0) // Case sensitive
+	if(battle_config.case_sensitive_aegisnames && strcmp(item->name,str) == 0)
+		*dst=item;
+	else if(!battle_config.case_sensitive_aegisnames && strcasecmp(item->name,str) == 0)
 		*dst=item;
 
 	//Second priority to Client displayed name.
@@ -78,7 +80,9 @@ struct item_data *itemdb_searchname(const char *str) {
 			continue;
 
 		// Absolute priority to Aegis code name.
-		if(strcmp(item->name,str) == 0) // Case sensitive
+		if(battle_config.case_sensitive_aegisnames && strcmp(item->name,str) == 0)
+			return item;
+		else if(!battle_config.case_sensitive_aegisnames && strcasecmp(item->name,str) == 0)
 			return item;
 
 		//Second priority to Client displayed name.
@@ -100,14 +104,16 @@ struct item_data* itemdb_name2id(const char *str) {
  */
 static int itemdb_searchname_array_sub(DBKey key, DBData data, va_list ap)
 {
-	struct item_data *item = db_data2ptr(&data);
+	struct item_data *item = DB->data2ptr(&data);
 	char *str;
 	str=va_arg(ap,char *);
 	if(item == &dummy_item)
 		return 1; //Invalid item.
 	if(stristr(item->jname,str))
 		return 0;
-	if(stristr(item->name,str))
+	if(battle_config.case_sensitive_aegisnames && strstr(item->name,str))
+		return 0;
+	if(!battle_config.case_sensitive_aegisnames && stristr(item->name,str))
 		return 0;
 	return strcmpi(item->jname,str);
 }
@@ -130,9 +136,18 @@ int itemdb_searchname_array(struct item_data **data, int size, const char *str, 
 		if(item == NULL)
 			continue;
 
-		if((!flag && (stristr(item->jname,str) || stristr(item->name,str))) ||
-			(flag && (strcmp(item->jname,str) == 0 || strcmp(item->name,str) == 0)))
-		{
+		if(
+		    (!flag
+		    && (stristr(item->jname,str)
+		       || (battle_config.case_sensitive_aegisnames && strstr(item->name,str))
+		       || (!battle_config.case_sensitive_aegisnames && stristr(item->name,str))
+		    ))
+		 || (flag
+		    && (strcmp(item->jname,str) == 0
+		       || (battle_config.case_sensitive_aegisnames && strcmp(item->name,str) == 0)
+		       || (!battle_config.case_sensitive_aegisnames && strcasecmp(item->name,str) == 0)
+		    ))
+		) {
 			if(count < size)
 				data[count] = item;
 			++count;
@@ -146,7 +161,7 @@ int itemdb_searchname_array(struct item_data **data, int size, const char *str, 
 		size -= count;
 		db_count = itemdb_other->getall(itemdb_other, (DBData **)&db_data, size, itemdb_searchname_array_sub, str);
 		for(i = 0; i < db_count; i++)
-			data[count++] = db_data2ptr(db_data[i]);
+			data[count++] = DB->data2ptr(db_data[i]);
 		count += db_count;
 	}
 	return count;
@@ -772,7 +787,7 @@ bool itemdb_read_cached_packages(const char *config_filename) {
 
 	for(i = 0; i < pcnt; i++) {
 		unsigned short id = 0, random_qty = 0, must_qty = 0;
-		struct item_data *data;
+		struct item_data *pdata;
 		struct item_package *package = &itemdb->packages[i];
 		unsigned short c;
 
@@ -783,10 +798,10 @@ bool itemdb_read_cached_packages(const char *config_filename) {
 		//next 2 bytes = random cnt
 		hread(&random_qty,sizeof(random_qty),1,file);
 
-		if(!(data = itemdb_exists(id)))
+		if(!(pdata = itemdb_exists(id)))
 			ShowWarning("itemdb_read_packages: item '%d' de pacote desconhecido, saltando..\n",id);
 		else
-			data->package = &itemdb->packages[i];
+			pdata->package = &itemdb->packages[i];
 
 		package->id = id;
 		package->random_qty = random_qty;
@@ -1005,7 +1020,6 @@ void itemdb_read_packages(void) {
 		for(r = 0; r < highest_gcnt; r++) {
 			prev[r] = NULL;
 		}
-		r = 0;
 		
 		data->package = &itemdb->packages[cnt];
 		
@@ -1246,7 +1260,7 @@ static bool itemdb_read_stack(char *fields[], int columns, int current)
 	}
 
 	amount = (unsigned short)strtoul(fields[1], NULL, 10);
-	type = strtoul(fields[2], NULL, 10);
+	type = (unsigned int)strtoul(fields[2], NULL, 10);
 
 	if(!amount) {
 		// ignore
@@ -1383,7 +1397,7 @@ void itemdb_read_combos()
 
 		id->combos[idx]->nameid = aMalloc(retcount * sizeof(unsigned short));
 		id->combos[idx]->count = retcount;
-		id->combos[idx]->script = parse_script(row[1], "item_combo_db", rows, 0);
+		id->combos[idx]->script = script->parse(row[1], "item_combo_db", rows, 0);
 		id->combos[idx]->id = rows;
 		id->combos[idx]->isRef = false;
 
@@ -1571,24 +1585,24 @@ static bool itemdb_parse_dbrow(char **str, const char *source, int line, int scr
 	id->sex = itemdb_gendercheck(id); //Apply gender filtering.
 
 	if(id->script) {
-		script_free_code(id->script);
+		script->free_code(id->script);
 		id->script = NULL;
 	}
 	if(id->equip_script) {
-		script_free_code(id->equip_script);
+		script->free_code(id->equip_script);
 		id->equip_script = NULL;
 	}
 	if(id->unequip_script) {
-		script_free_code(id->unequip_script);
+		script->free_code(id->unequip_script);
 		id->unequip_script = NULL;
 	}
 
 	if(*str[19])
-		id->script = parse_script(str[19], source, line, scriptopt);
+		id->script = script->parse(str[19], source, line, scriptopt);
 	if(*str[20])
-		id->equip_script = parse_script(str[20], source, line, scriptopt);
+		id->equip_script = script->parse(str[20], source, line, scriptopt);
 	if(*str[21])
-		id->unequip_script = parse_script(str[21], source, line, scriptopt);
+		id->unequip_script = script->parse(str[21], source, line, scriptopt);
 
 	return true;
 }
@@ -1660,7 +1674,7 @@ int itemdb_uid_load()
 {
 
 	char *uid;
-	if(SQL_ERROR == Sql_Query(mmysql_handle, "SELECT `value` FROM `interreg` WHERE `varname`='unique_id'"))
+	if(SQL_ERROR == Sql_Query(mmysql_handle, "SELECT `value` FROM `%s` WHERE `varname`='unique_id'", interreg_db))
 		Sql_ShowDebug(mmysql_handle);
 
 	if(SQL_SUCCESS != Sql_NextRow(mmysql_handle)) {
@@ -1687,8 +1701,8 @@ static void itemdb_read(void)
 	itemdb_read_sqldb();
 	for(i = 0; i < ARRAYLENGTH(itemdb_array); ++i) {
 		if(itemdb_array[i]) {
-			if(itemdb->names->put(itemdb->names,db_str2key(itemdb_array[i]->name),db_ptr2data(itemdb_array[i]),&prev)) {
-				struct item_data *data = db_data2ptr(&prev);
+			if(itemdb->names->put(itemdb->names, DB->str2key(itemdb_array[i]->name), DB->ptr2data(itemdb_array[i]), &prev)) {
+				struct item_data *data = DB->data2ptr(&prev);
 				ShowError("itemdb_read: duplicate AegisName '%s' in item ID %d and %d\n",itemdb_array[i]->name,itemdb_array[i]->nameid,data->nameid);
 			}
 		}
@@ -1699,7 +1713,7 @@ static void itemdb_read(void)
 	itemdb->read_packages();
 
 	sv_readsqldb(get_database_name(20), NULL, 2, -1, &itemdb_read_itemavail);
-	sv_readsqldb(get_database_name(22), NULL, 10, -1, &ItemMoveInfo);
+	sv_readsqldb(get_database_name(22), NULL, 10, -1,&ItemMoveInfo);
 	sv_readsqldb(get_database_name(23), NULL, 2, -1, &itemdb_read_itemdelay);
 	sv_readsqldb(get_database_name(24), NULL, 3, -1, &itemdb_read_stack);
 	sv_readsqldb(get_database_name(25), NULL, 1, -1, &itemdb_read_buyingstore);
@@ -1719,17 +1733,17 @@ static void destroy_item_data(struct item_data *self, int free_self)
 		return;
 	// free scripts
 	if(self->script)
-		script_free_code(self->script);
+		script->free_code(self->script);
 	if(self->equip_script)
-		script_free_code(self->equip_script);
+		script->free_code(self->equip_script);
 	if(self->unequip_script)
-		script_free_code(self->unequip_script);
+		script->free_code(self->unequip_script);
 	if(self->combos_count) {
 		int i;
 		for(i = 0; i < self->combos_count; i++) {
 			if(!self->combos[i]->isRef) {
 				aFree(self->combos[i]->nameid);
-				script_free_code(self->combos[i]->script);
+				script->free_code(self->combos[i]->script);
 			}
 			aFree(self->combos[i]);
 		}
@@ -1749,7 +1763,7 @@ static void destroy_item_data(struct item_data *self, int free_self)
  */
 static int itemdb_final_sub(DBKey key, DBData *data, va_list ap)
 {
-	struct item_data *id = db_data2ptr(data);
+	struct item_data *id = DB->data2ptr(data);
 
 	if(id != &dummy_item)
 		destroy_item_data(id, 1);
@@ -1826,9 +1840,9 @@ void itemdb_reload(void)
 	iter = mapit_geteachpc();
 	for(sd = (struct map_session_data *)mapit_first(iter); mapit_exists(iter); sd = (struct map_session_data *)mapit_next(iter)) {
 		memset(sd->item_delay, 0, sizeof(sd->item_delay));  // reset item delays
+		pc_setinventorydata(sd);
 		if(battle_config.item_check)
 			sd->state.itemcheck = 1;
-		pc_setinventorydata(sd);
 		pc_checkitem(sd);
 		/* clear combo bonuses */
 		if(sd->combos.count) {
@@ -1852,16 +1866,6 @@ void itemdb_name_constants(void) {
 		script->set_constant2(data->name,data->nameid,0);
 
 	dbi_destroy(iter);	
-}
-/* used to clear conflicts during script reload */
-void itemdb_force_name_constants(void) {
-	DBIterator *iter = db_iterator(itemdb->names);
-	struct item_data *data;
-
-	for(data = dbi_first(iter); dbi_exists(iter); data = dbi_next(iter))
-		script->set_constant_force(data->name,data->nameid,0);
-
-	dbi_destroy(iter);
 }
 void do_final_itemdb(void) {
 	int i;
@@ -1903,7 +1907,6 @@ void itemdb_defaults(void) {
 	itemdb = &itemdb_s;
 
 	itemdb->name_constants = itemdb_name_constants;
-	itemdb->force_name_constants = itemdb_force_name_constants;
 	/* */
 	itemdb->packages = NULL;
 	itemdb->package_count = 0;

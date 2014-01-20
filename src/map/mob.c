@@ -68,9 +68,6 @@
 #define RUDE_ATTACKED_COUNT 2   //After how many rude-attacks should the skill be used?
 #define MAX_MOB_CHAT 250 //Max Skill's messages
 
-//Dynamic mob database, allows saving of memory when there's big gaps in the mob_db [Skotlex]
-struct mob_db *mob_db_data[MAX_MOB_DB+1];
-struct mob_db *mob_dummy = NULL;    //Dummy mob to be returned when a non-existant one is requested.
 
 struct mob_db *mob_db(int index) {
 	if(index < 0 || index > MAX_MOB_DB || mob_db_data[index] == NULL) return mob_dummy;
@@ -111,7 +108,11 @@ int mobdb_searchname(const char *str)
 		monster = mob_db(i);
 		if(monster == mob_dummy) //Skip dummy mobs.
 			continue;
-		if(strcmpi(monster->name,str)==0 || strcmpi(monster->jname,str)==0 || strcmp(monster->sprite,str)==0) // Sprite name case sensitive
+		if(strcmpi(monster->name,str)==0 || strcmpi(monster->jname,str)==0)
+			return i;
+		if(battle_config.case_sensitive_aegisnames && strcmp(monster->sprite,str)==0)
+			return i;
+		if(!battle_config.case_sensitive_aegisnames && strcasecmp(monster->sprite,str)==0)
 			return i;
 	}
 
@@ -128,13 +129,15 @@ static int mobdb_searchname_array_sub(struct mob_db *monster, const char *str, i
 			return 0;
 		if(stristr(monster->name,str))
 			return 0;
-		return strcmpi(monster->jname,str);
+	} else {
+		if(strcmpi(monster->jname,str) == 0)
+			return 0;
+		if(strcmpi(monster->name,str) == 0)
+			return 0;
 	}
-	if(strcmpi(monster->jname,str) == 0)
-		return 0;
-	if(strcmpi(monster->name,str) == 0)
-		return 0;
-	return strcmp(monster->sprite,str);
+	if (battle_config.case_sensitive_aegisnames)
+		return strcmp(monster->sprite,str);
+	return strcasecmp(monster->sprite,str);
 }
 
 /*==========================================
@@ -149,7 +152,7 @@ void mvptomb_create(struct mob_data *md, char *killer, time_t time)
 
 	CREATE(nd, struct npc_data, 1);
 
-	nd->bl.id = md->tomb_nid = npc_get_new_npc_id();
+	nd->bl.id = md->tomb_nid = npc->get_new_npc_id();
 
     	nd->dir = md->ud.dir;
 	nd->bl.m = md->bl.m;
@@ -275,7 +278,7 @@ int mob_parse_dataset(struct spawn_data *data)
  *------------------------------------------*/
 struct mob_data *mob_spawn_dataset(struct spawn_data *data) {
 	struct mob_data *md = (struct mob_data *)aCalloc(1, sizeof(struct mob_data));
-	md->bl.id= npc_get_new_npc_id();
+	md->bl.id= npc->get_new_npc_id();
 	md->bl.type = BL_MOB;
 	md->bl.m = data->m;
 	md->bl.x = data->x;
@@ -492,8 +495,8 @@ int mob_once_spawn(struct map_session_data *sd, int16 m, int16 x, int16 y, const
 			continue;
 
 		if(class_ == MOBID_EMPERIUM && !no_guardian_data) {
-			struct guild_castle *gc = guild_mapindex2gc(map_id2index(m));
-			struct guild *g = (gc) ? guild_search(gc->guild_id) : NULL;
+			struct guild_castle *gc = guild->mapindex2gc(map_id2index(m));
+			struct guild *g = (gc) ? guild->search(gc->guild_id) : NULL;
 			if(gc) {
 				md->guardian_data = (struct guardian_data *)aCalloc(1, sizeof(struct guardian_data));
 				md->guardian_data->castle = gc;
@@ -593,7 +596,7 @@ int mob_spawn_guardian_sub(int tid, int64 tick, int id, intptr_t data)
 
 	md = (struct mob_data *)bl;
 	nullpo_ret(md->guardian_data);
-	g = guild_search((int)data);
+	g = guild->search((int)data);
 
 	if(g == NULL) {
 		//Liberate castle, if the guild is not found this is an error! [Skotlex]
@@ -603,16 +606,16 @@ int mob_spawn_guardian_sub(int tid, int64 tick, int id, intptr_t data)
 			md->guardian_data->guild_id = 0;
 			if(md->guardian_data->castle->guild_id) { //Free castle up.
 				ShowNotice("Clearing ownership of castle %d (%s)\n", md->guardian_data->castle->castle_id, md->guardian_data->castle->castle_name);
-				guild_castledatasave(md->guardian_data->castle->castle_id, 1, 0);
+				guild->castledatasave(md->guardian_data->castle->castle_id, 1, 0);
 			}
 		} else {
-			if(md->guardian_data->number >= 0 && md->guardian_data->number < MAX_GUARDIANS && md->guardian_data->castle->guardian[md->guardian_data->number].visible)
-				guild_castledatasave(md->guardian_data->castle->castle_id, 10+md->guardian_data->number,0);
+			if(md->guardian_data && md->guardian_data->number >= 0 && md->guardian_data->number < MAX_GUARDIANS && md->guardian_data->castle->guardian[md->guardian_data->number].visible)
+				guild->castledatasave(md->guardian_data->castle->castle_id, 10 + md->guardian_data->number, 0);
 			unit_free(&md->bl,CLR_OUTSIGHT); //Remove guardian.
 		}
 		return 0;
 	}
-	guardup_lv = guild_checkskill(g,GD_GUARDUP);
+	guardup_lv = guild->checkskill(g, GD_GUARDUP);
 	md->guardian_data->emblem_id = g->emblem_id;
 	memcpy(md->guardian_data->guild_name, g->name, NAME_LENGTH);
 	md->guardian_data->guardup_lv = guardup_lv;
@@ -667,7 +670,7 @@ int mob_spawn_guardian(const char *mapname, short x, short y, const char *mobnam
 	if(!mob_parse_dataset(&data))
 		return 0;
 
-	gc=guild_mapname2gc(map[m].name);
+	gc = guild->mapname2gc(map[m].name);
 	if(gc == NULL) {
 		ShowError("mob_spawn_guardian: No castle set at map %s\n", map[m].name);
 		return 0;
@@ -675,7 +678,7 @@ int mob_spawn_guardian(const char *mapname, short x, short y, const char *mobnam
 	if(!gc->guild_id)
 		ShowWarning("mob_spawn_guardian: Spawning guardian %d on a castle with no guild (castle map %s)\n", class_, map[m].name);
 	else
-		g = guild_search(gc->guild_id);
+		g = guild->search(gc->guild_id);
 
 	if(has_index && gc->guardian[guardian].id) {
 		//Check if guardian already exists, refuse to spawn if so.
@@ -708,7 +711,7 @@ int mob_spawn_guardian(const char *mapname, short x, short y, const char *mobnam
 	if(g) {
 		md->guardian_data->emblem_id = g->emblem_id;
 		memcpy(md->guardian_data->guild_name, g->name, NAME_LENGTH);
-		md->guardian_data->guardup_lv = guild_checkskill(g,GD_GUARDUP);
+		md->guardian_data->guardup_lv = guild->checkskill(g, GD_GUARDUP);
 	} else if(md->guardian_data->guild_id)
 		add_timer(gettick()+5000,mob_spawn_guardian_sub,md->bl.id,md->guardian_data->guild_id);
 	mob_spawn(md);
@@ -798,7 +801,7 @@ int mob_linksearch(struct block_list *bl,va_list ap)
 	md=(struct mob_data *)bl;
 	class_ = va_arg(ap, int);
 	target = va_arg(ap, struct block_list *);
-	tick=va_arg(ap, unsigned int);
+	tick = va_arg(ap, int64);
 
 	if(md->class_ == class_ && DIFF_TICK(md->last_linktime, tick) < MIN_MOBLINKTIME
 	   && !md->target_id) {
@@ -875,10 +878,11 @@ int mob_setdelayspawn(struct mob_data *md)
 
 int mob_count_sub(struct block_list *bl, va_list ap)
 {
-	int mobid[10], i;
+	int mobid[10] = { 0 }, i;
 	ARR_FIND(0, 10, i, (mobid[i] = va_arg(ap, int)) == 0); //fetch till 0
 	if(mobid[0]) {  //if there one let's check it otherwise go backward
 		TBL_MOB *md = BL_CAST(BL_MOB, bl);
+		nullpo_ret(md);
 		ARR_FIND(0, 10, i, md->class_ == mobid[i]);
 		return (i < 10) ? 1 : 0;
 	}
@@ -1757,7 +1761,6 @@ static int mob_ai_hard(int tid, int64 tick, int id, intptr_t data)
  *------------------------------------------*/
 static struct item_drop *mob_setdropitem(int nameid, int qty) {
 	struct item_drop *drop = ers_alloc(item_drop_ers, struct item_drop);
-	memset(&drop->item_data, 0, sizeof(struct item));
 	drop->item_data.nameid = nameid;
 	drop->item_data.amount = qty;
 	drop->item_data.identify = itemdb_isidentified(nameid);
@@ -2071,7 +2074,7 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 	}
 
 	if(md->guardian_data && md->guardian_data->number >= 0 && md->guardian_data->number < MAX_GUARDIANS)
-		guild_castledatasave(md->guardian_data->castle->castle_id, 10+md->guardian_data->number,0);
+		guild->castledatasave(md->guardian_data->castle->castle_id, 10 + md->guardian_data->number, 0);
 
 	if(src) { // Use Dead skill only if not killed by Script or Command
 		md->state.skillstate = MSS_DEAD;
@@ -2538,11 +2541,11 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 				if(++sd->mission_count >= 100 && (temp = mob_get_random_id(0, 0xE, sd->status.base_level))) {
 					pc_addfame(sd, 1);
 					sd->mission_mobid = temp;
-					pc_setglobalreg(sd,"TK_MISSION_ID", temp);
+					pc_setglobalreg(sd,script->add_str("TK_MISSION_ID"), temp);
 					sd->mission_count = 0;
 					clif_mission_info(sd, temp, 0);
 				}
-				pc_setglobalreg(sd,"TK_MISSION_COUNT", sd->mission_count);
+				pc_setglobalreg(sd,script->add_str("TK_MISSION_COUNT"), sd->mission_count);
 			}
 
 			if(sd->status.party_id)
@@ -2557,15 +2560,15 @@ int mob_dead(struct mob_data *md, struct block_list *src, int type)
 		if(md->npc_event[0] && !md->state.npc_killmonster) {
 			if(sd && battle_config.mob_npc_event_type) {
 				pc_setparam(sd, SP_KILLERRID, sd->bl.id);
-				npc_event(sd,md->npc_event,0);
+				npc->event(sd,md->npc_event,0);
 			} else if(mvp_sd) {
 				pc_setparam(mvp_sd, SP_KILLERRID, sd?sd->bl.id:0);
-				npc_event(mvp_sd,md->npc_event,0);
+				npc->event(mvp_sd,md->npc_event,0);
 			} else
-				npc_event_do(md->npc_event);
+				npc->event_do(md->npc_event);
 		} else if(mvp_sd && !md->state.npc_killmonster) {
 			pc_setparam(mvp_sd, SP_KILLEDRID, md->class_);
-			npc_script_event(mvp_sd, NPCE_KILLNPC); // PCKillNPC [Lance]
+			npc->script_event(mvp_sd, NPCE_KILLNPC); // PCKillNPC [Lance]
 		}
 
 		md->status.hp = 1;
@@ -2648,25 +2651,25 @@ int mob_guardian_guildchange(struct mob_data *md)
 			md->guardian_data->guild_name[0] = '\0';
 		} else {
 			if(md->guardian_data->number >= 0 && md->guardian_data->number < MAX_GUARDIANS && md->guardian_data->castle->guardian[md->guardian_data->number].visible)
-				guild_castledatasave(md->guardian_data->castle->castle_id, 10+md->guardian_data->number, 0);
+				guild->castledatasave(md->guardian_data->castle->castle_id, 10 + md->guardian_data->number, 0);
 			unit_free(&md->bl,CLR_OUTSIGHT); //Remove guardian.
 		}
 		return 0;
 	}
 
-	g = guild_search(md->guardian_data->castle->guild_id);
+	g = guild->search(md->guardian_data->castle->guild_id);
 	if(g == NULL) {
 		//Properly remove guardian info from Castle data.
 		ShowError("mob_guardian_guildchange: New Guild (id %d) does not exists!\n", md->guardian_data->guild_id);
 		if(md->guardian_data->number >= 0 && md->guardian_data->number < MAX_GUARDIANS)
-			guild_castledatasave(md->guardian_data->castle->castle_id, 10+md->guardian_data->number, 0);
+			guild->castledatasave(md->guardian_data->castle->castle_id, 10 + md->guardian_data->number, 0);
 		unit_free(&md->bl,CLR_OUTSIGHT);
 		return 0;
 	}
 
 	md->guardian_data->guild_id = g->guild_id;
 	md->guardian_data->emblem_id = g->emblem_id;
-	md->guardian_data->guardup_lv = guild_checkskill(g,GD_GUARDUP);
+	md->guardian_data->guardup_lv = guild->checkskill(g, GD_GUARDUP);
 	memcpy(md->guardian_data->guild_name, g->name, NAME_LENGTH);
 
 	return 1;
@@ -4085,7 +4088,7 @@ static bool mob_parse_row_chatdb(char *str[], int columns, int current)
 	//MSG ID
 	ms->msg_id=msg_id;
 	//Color
-	ms->color=strtoul(str[1],NULL,0);
+	ms->color=(unsigned int)strtoul(str[1],NULL,0);
 	//Message
 	msg = str[2];
 	len = strlen(msg);
@@ -4530,7 +4533,7 @@ int do_init_mob(void)
 	memset(mob_db_data,0,sizeof(mob_db_data)); //Clear the array
 	mob_db_data[0] = (struct mob_db *)aCalloc(1, sizeof(struct mob_db));    //This mob is used for random spawns
 	mob_makedummymobdb(0); //The first time this is invoked, it creates the dummy mob
-	item_drop_ers = ers_new(sizeof(struct item_drop),"mob.c::item_drop_ers",ERS_OPT_NONE);
+	item_drop_ers = ers_new(sizeof(struct item_drop),"mob.c::item_drop_ers",ERS_OPT_CLEAN);
 	item_drop_list_ers = ers_new(sizeof(struct item_drop_list),"mob.c::item_drop_list_ers",ERS_OPT_NONE);
 
 	mob_load();

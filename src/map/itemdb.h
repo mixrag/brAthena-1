@@ -86,6 +86,7 @@ enum item_itemid {
 	ITEMID_PHRACON               = 1010,
 	ITEMID_EMVERETARCON          = 1011,
 	ITEMID_TRAP                  = 1065,
+	ITEMID_ANGRA_MANYU           = 1599,
 	ITEMID_STRANGE_EMBRYO        = 6415,
 	ITEMID_FACE_PAINT            = 6120,
 	ITEMID_STONE                 = 7049,
@@ -532,7 +533,6 @@ void do_init_itemdb(void);
 /* incomplete */
 struct itemdb_interface {
 	void (*name_constants) (void);
-	void (*force_name_constants) (void);
 	/* */
 	struct item_package *packages;
 	unsigned short package_count;

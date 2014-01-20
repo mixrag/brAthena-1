@@ -26,6 +26,21 @@ struct homun_data;
 struct mercenary_data;
 struct status_change;
 
+//Change the equation when the values are high enough to discard the
+//imprecision in exchange of overflow protection [Skotlex]
+//Also add 100% checks since those are the most used cases where we don't
+//want aproximation errors.
+#define APPLY_RATE(value, rate) ( \
+	(rate) == 100 ? \
+		(value) \
+	: ( \
+		(value) > 100000 ? \
+			(rate) * ( (value) / 100 ) \
+		: \
+			(value) * (rate) / 100 \
+	) \
+)
+
 /**
  * Max Refine available to your server
  * Changing this limit requires edits to refine_db.txt
@@ -702,6 +717,10 @@ typedef enum sc_type {
 
     SC_MOONSTAR,
     SC_SUPER_STAR,
+
+    SC_OKTOBERFEST,
+    SC_STRANGELIGHTS,
+    SC_DECORATION_OF_MUSIC,
 
     //homon S
     SC_TINDER_BREAKER,
@@ -1506,6 +1525,16 @@ enum si_type {
     SI_PACKING_ENVELOPE10 = 775,
     SI_GLASTHEIM_TRANS = 776,
     SI_HEAT_BARREL_AFTER = 778,
+    SI_DECORATION_OF_MUSIC = 779,
+    SI_OVERSEAEXPUP = 780,
+    SI_BEEF_RIB_STEW = 783,
+    SI_PORK_RIB_STEW = 784,
+    SI_CHUSEOK_MONDAY = 785,
+    SI_CHUSEOK_TUESDAY = 786,
+    SI_CHUSEOK_WEDNESDAY = 787,
+    SI_CHUSEOK_THURSDAY = 788,
+    SI_CHUSEOK_FRIDAY = 789,
+    SI_CHUSEOK_WEEKEND = 790,
 
     SI_MAX,
 };
@@ -1628,6 +1657,7 @@ enum {
     OPTION_DRAGON4   = 0x02000000,
     OPTION_DRAGON5   = 0x04000000,
     OPTION_HANBOK    = 0x08000000,
+    OPTION_OKTOBERFEST  = 0x10000000,
 
 #ifndef NEW_CARTS
     OPTION_CART1     = 0x00000008,
@@ -1844,6 +1874,7 @@ struct status_change {
 	unsigned char sg_counter; //Storm gust counter (previous hits from storm gust)
 #endif
 	unsigned char bs_counter; // Blood Sucker counter
+	unsigned char fv_counter; // Force of vanguard counter
 	struct status_change_entry *data[SC_MAX];
 };
 
@@ -1986,6 +2017,9 @@ short status_calc_aspd(struct block_list *bl, struct status_change *sc, short fl
 int status_get_weapon_atk(struct block_list *src, struct weapon_atk *watk, int flag);
 int status_get_total_mdef(struct block_list *src);
 int status_get_total_def(struct block_list *src);
+
+unsigned short status_calc_ematk(struct block_list *bl, struct status_change *sc, int matk);
+unsigned short status_calc_matk(struct block_list *bl, struct status_change *sc, int matk, bool viewable);
 
 int status_get_matk(struct block_list *src, int flag);
 
