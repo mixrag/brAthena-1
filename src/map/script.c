@@ -67,15 +67,6 @@
 #endif
 #include <time.h>
 
-#ifdef BETA_THREAD_TEST
-#include "../common/atomic.h"
-#include "../common/spinlock.h"
-#include "../common/thread.h"
-#include "../common/mutex.h"
-#endif
-
-
-
 static inline int GETVALUE(const unsigned char *buf, int i)
 {
 	return (int)MakeDWord(MakeWord(buf[i], buf[i+1]), MakeWord(buf[i+2], 0));
@@ -88,30 +79,6 @@ static inline void SETVALUE(unsigned char *buf, int i, int n)
 }
 
 struct script_interface script_s;
-
-#ifdef BETA_THREAD_TEST
-/**
- * MySQL Query Slave
- **/
-static SPIN_LOCK queryThreadLock;
-static rAthread queryThread = NULL;
-static ramutex  queryThreadMutex = NULL;
-static racond   queryThreadCond = NULL;
-static volatile int32 queryThreadTerminate = 0;
-
-struct queryThreadEntry {
-	bool ok;
-	bool type; /* main db or log db? */
-	struct script_state *st;
-};
-
-/* Ladies and Gentleman the Manager! */
-struct {
-	struct queryThreadEntry **entry;/* array of structs */
-	int count;
-	int timer;/* used to receive processed entries */
-} queryThreadData;
-#endif
 
 const char* script_op2name(int op) {
 #define RETURN_OP_NAME(type) case type: return #type
@@ -4174,179 +4141,6 @@ void script_generic_ui_array_expand (unsigned int plus) {
 	RECREATE(script->generic_ui_array, unsigned int, script->generic_ui_array_size);
 }
 
-#ifdef BETA_THREAD_TEST
-int buildin_query_sql_sub(struct script_state *st, Sql *handle);
-
-/* used to receive items the queryThread has already processed */
-int queryThread_timer(int tid, int64 tick, int id, intptr_t data)
-{
-	int i, cursor = 0;
-	bool allOk = true;
-
-	EnterSpinLock(&queryThreadLock);
-
-	for(i = 0; i < queryThreadData.count; i++) {
-		struct queryThreadEntry *entry = queryThreadData.entry[i];
-
-		if(!entry->ok) {
-			allOk = false;
-			continue;
-		}
-
-		script->run_main(entry->st);
-
-		entry->st = NULL;/* empty entries */
-		aFree(entry);
-		queryThreadData.entry[i] = NULL;
-	}
-
-
-	if(allOk) {
-		/* cancel the repeating timer -- it'll re-create itself when necessary, dont need to remain looping */
-		delete_timer(queryThreadData.timer, queryThread_timer);
-		queryThreadData.timer = INVALID_TIMER;
-	}
-
-	/* now lets clear the mess. */
-	for(i = 0; i < queryThreadData.count; i++) {
-		struct queryThreadEntry *entry = queryThreadData.entry[i];
-		if(entry == NULL)
-			continue;/* entry on hold */
-
-		/* move */
-		memmove(&queryThreadData.entry[cursor], &queryThreadData.entry[i], sizeof(struct queryThreadEntry *));
-
-		cursor++;
-	}
-
-	queryThreadData.count = cursor;
-
-	LeaveSpinLock(&queryThreadLock);
-
-	return 0;
-}
-
-void queryThread_add(struct script_state *st, bool type)
-{
-	int idx = 0;
-	struct queryThreadEntry *entry = NULL;
-
-	EnterSpinLock(&queryThreadLock);
-
-	if(queryThreadData.count++ != 0)
-		RECREATE(queryThreadData.entry, struct queryThreadEntry * , queryThreadData.count);
-
-	idx = queryThreadData.count-1;
-
-	CREATE(queryThreadData.entry[idx],struct queryThreadEntry,1);
-
-	entry = queryThreadData.entry[idx];
-
-	entry->st = st;
-	entry->ok = false;
-	entry->type = type;
-	if(queryThreadData.timer == INVALID_TIMER) {   /* start the receiver timer */
-		queryThreadData.timer = add_timer_interval(gettick() + 100, queryThread_timer, 0, 0, 100);
-	}
-
-	LeaveSpinLock(&queryThreadLock);
-
-	/* unlock the queryThread */
-	racond_signal(queryThreadCond);
-}
-/* adds a new log to the queue */
-void queryThread_log(char *entry, int length)
-{
-	int idx = logThreadData.count;
-
-	EnterSpinLock(&queryThreadLock);
-
-	if(logThreadData.count++ != 0)
-		RECREATE(logThreadData.entry, char * , logThreadData.count);
-
-	CREATE(logThreadData.entry[idx], char, length + 1);
-	safestrncpy(logThreadData.entry[idx], entry, length + 1);
-
-	LeaveSpinLock(&queryThreadLock);
-
-	/* unlock the queryThread */
-	racond_signal(queryThreadCond);
-}
-
-/* queryThread_main */
-static void *queryThread_main(void *x)
-{
-	Sql *queryThread_handle = Sql_Malloc();
-	int i;
-
-	if(SQL_ERROR == Sql_Connect(queryThread_handle, map_server_id, map_server_pw, map_server_ip, map_server_port, map_server_db))
-		exit(EXIT_FAILURE);
-
-	if(strlen(default_codepage) > 0)
-		if(SQL_ERROR == Sql_SetEncoding(queryThread_handle, default_codepage))
-			Sql_ShowDebug(queryThread_handle);
-
-	if(log_config.sql_logs) {
-		logmysql_handle = Sql_Malloc();
-
-		if(SQL_ERROR == Sql_Connect(logmysql_handle, log_db_id, log_db_pw, log_db_ip, log_db_port, log_db_db))
-			exit(EXIT_FAILURE);
-
-		if(strlen(default_codepage) > 0)
-			if(SQL_ERROR == Sql_SetEncoding(logmysql_handle, default_codepage))
-				Sql_ShowDebug(logmysql_handle);
-	}
-
-	while(1) {
-
-		if(queryThreadTerminate > 0)
-			break;
-
-		EnterSpinLock(&queryThreadLock);
-
-		/* mess with queryThreadData within the lock */
-		for(i = 0; i < queryThreadData.count; i++) {
-			struct queryThreadEntry *entry = queryThreadData.entry[i];
-
-			if(entry->ok)
-				continue;
-			else if(!entry->st || !entry->st->stack) {
-				entry->ok = true;/* dispose */
-				continue;
-			}
-
-			script->buildin_query_sql_sub(entry->st, entry->type ? logmysql_handle : queryThread_handle);
-
-			entry->ok = true;/* we're done with this */
-		}
-
-		/* also check for any logs in need to be sent */
-		if(log_config.sql_logs) {
-			for(i = 0; i < logThreadData.count; i++) {
-				if(SQL_ERROR == Sql_Query(logmysql_handle, logThreadData.entry[i]))
-					Sql_ShowDebug(logmysql_handle);
-				aFree(logThreadData.entry[i]);
-			}
-			logThreadData.count = 0;
-		}
-
-		LeaveSpinLock(&queryThreadLock);
-
-		ramutex_lock(queryThreadMutex);
-		racond_wait(queryThreadCond,    queryThreadMutex,  -1);
-		ramutex_unlock(queryThreadMutex);
-
-	}
-
-	Sql_Free(queryThread_handle);
-
-	if(log_config.sql_logs) {
-		Sql_Free(logmysql_handle);
-	}
-
-	return NULL;
-}
-#endif
 /*==========================================
  * Destructor
  *------------------------------------------*/
@@ -4426,12 +4220,12 @@ void do_final_script(void) {
 	if(script->str_buf)
 		aFree(script->str_buf);
 
-	for(i = 0; i < atcmd_binding_count; i++) {
-		aFree(atcmd_binding[i]);
+	for(i = 0; i < atcommand->binding_count; i++) {
+		aFree(atcommand->binding[i]);
 	}
 
-	if(atcmd_binding_count != 0)
-		aFree(atcmd_binding);
+	if(atcommand->binding_count != 0)
+		aFree(atcommand->binding);
 
 	for(i = 0; i < script->buildin_count; i++) {
 		if(script->buildin[i]) {
@@ -4478,31 +4272,6 @@ void do_final_script(void) {
 
 	if(script->generic_ui_array)
 		aFree(script->generic_ui_array);
-
-#ifdef BETA_THREAD_TEST
-	/* QueryThread */
-	InterlockedIncrement(&queryThreadTerminate);
-	racond_signal(queryThreadCond);
-	rathread_wait(queryThread, NULL);
-
-	// Destroy cond var and mutex.
-	racond_destroy(queryThreadCond);
-	ramutex_destroy(queryThreadMutex);
-
-	/* Clear missing vars */
-	for(i = 0; i < queryThreadData.count; i++) {
-		aFree(queryThreadData.entry[i]);
-	}
-
-	aFree(queryThreadData.entry);
-
-	for(i = 0; i < logThreadData.count; i++) {
-		aFree(logThreadData.entry[i]);
-	}
-
-	aFree(logThreadData.entry);
-#endif
-
 	return;
 }
 /*==========================================
@@ -4525,29 +4294,6 @@ void do_init_script(void) {
 
 
 	mapreg->init();
-#ifdef BETA_THREAD_TEST
-	CREATE(queryThreadData.entry, struct queryThreadEntry *, 1);
-	queryThreadData.count = 0;
-	CREATE(logThreadData.entry, char *, 1);
-	logThreadData.count = 0;
-	/* QueryThread Start */
-
-	InitializeSpinLock(&queryThreadLock);
-
-	queryThreadData.timer = INVALID_TIMER;
-	queryThreadTerminate = 0;
-	queryThreadMutex = ramutex_create();
-	queryThreadCond = racond_create();
-
-	queryThread = rathread_create(queryThread_main, NULL);
-
-	if(queryThread == NULL) {
-		ShowFatalError("do_init_script: cannot spawn Query Thread.\n");
-		exit(EXIT_FAILURE);
-	}
-
-	add_timer_func_list(queryThread_timer, "queryThread_timer");
-#endif
 }
 
 int script_reload(void) {
@@ -4558,24 +4304,6 @@ int script_reload(void) {
 #ifdef ENABLE_CASE_CHECK
 	script->global_casecheck.clear();
 #endif
-
-#ifdef BETA_THREAD_TEST
-	/* we're reloading so any queries undergoing should be...exterminated. */
-	EnterSpinLock(&queryThreadLock);
-
-	for(i = 0; i < queryThreadData.count; i++) {
-		aFree(queryThreadData.entry[i]);
-	}
-	queryThreadData.count = 0;
-
-	if(queryThreadData.timer != INVALID_TIMER) {
-		delete_timer(queryThreadData.timer, queryThread_timer);
-		queryThreadData.timer = INVALID_TIMER;
-	}
-
-	LeaveSpinLock(&queryThreadLock);
-#endif
-
 
 	iter = db_iterator(script->st_db);
 
@@ -4590,14 +4318,14 @@ int script_reload(void) {
 
 	// @commands (script based)
 	// Clear bindings
-	for(i = 0; i < atcmd_binding_count; i++) {
-		aFree(atcmd_binding[i]);
+	for(i = 0; i < atcommand->binding_count; i++) {
+		aFree(atcommand->binding[i]);
 	}
 
-	if(atcmd_binding_count != 0)
-		aFree(atcmd_binding);
+	if(atcommand->binding_count != 0)
+		aFree(atcommand->binding);
 
-	atcmd_binding_count = 0;
+	atcommand->binding_count = 0;
 
 	db_clear(script->st_db);
 
@@ -7803,7 +7531,7 @@ BUILDIN_FUNC(successrefitem)
 		ep=sd->status.inventory[i].equip;
 
 		//Logs items, got from (N)PC scripts [Lupus]
-		log_pick_pc(sd, LOG_TYPE_SCRIPT, -1, &sd->status.inventory[i],sd->inventory_data[i]);
+		logs->pick_pc(sd, LOG_TYPE_SCRIPT, -1, &sd->status.inventory[i], sd->inventory_data[i]);
 
 		if (sd->status.inventory[i].refine >= MAX_REFINE)
 			return 0;
@@ -7815,7 +7543,7 @@ BUILDIN_FUNC(successrefitem)
 		clif_delitem(sd,i,1,3);
 
 		//Logs items, got from (N)PC scripts [Lupus]
-		log_pick_pc(sd, LOG_TYPE_SCRIPT, 1, &sd->status.inventory[i],sd->inventory_data[i]);
+		logs->pick_pc(sd, LOG_TYPE_SCRIPT, 1, &sd->status.inventory[i], sd->inventory_data[i]);
 
 		clif_additem(sd,i,1,0);
 		pc_equipitem(sd,i,ep);
@@ -7890,7 +7618,7 @@ BUILDIN_FUNC(downrefitem)
 		ep = sd->status.inventory[i].equip;
 
 		//Logs items, got from (N)PC scripts [Lupus]
-		log_pick_pc(sd, LOG_TYPE_SCRIPT, -1, &sd->status.inventory[i],sd->inventory_data[i]);
+		logs->pick_pc(sd, LOG_TYPE_SCRIPT, -1, &sd->status.inventory[i], sd->inventory_data[i]);
 
 		pc_unequipitem(sd,i,2); // status calc will happen in pc_equipitem() below
 		sd->status.inventory[i].refine -= down;
@@ -7900,7 +7628,7 @@ BUILDIN_FUNC(downrefitem)
 		clif_delitem(sd,i,1,3);
 
 		//Logs items, got from (N)PC scripts [Lupus]
-		log_pick_pc(sd, LOG_TYPE_SCRIPT, 1, &sd->status.inventory[i],sd->inventory_data[i]);
+		logs->pick_pc(sd, LOG_TYPE_SCRIPT, 1, &sd->status.inventory[i], sd->inventory_data[i]);
 
 		clif_additem(sd,i,1,0);
 		pc_equipitem(sd,i,ep);
@@ -7923,7 +7651,7 @@ BUILDIN_FUNC(statusup)
 	if(sd == NULL)
 		return 0;
 
-	pc_statusup(sd,type);
+	pc_statusup(sd, type, 1);
 
 	return 0;
 }
@@ -7994,7 +7722,7 @@ BUILDIN_FUNC(bonus)
   		case SP_ADD_MAGIC_DAMAGE_CLASS:
    			// estes bonus suportam nome de monstros
 			if (script_isstringtype(st, 3)) {
-				val1 = mobdb_searchname(script_getstr(st, 3));
+				val1 = mob->db_searchname(script_getstr(st, 3));
 				break;
 			}
 		default:
@@ -8856,7 +8584,7 @@ BUILDIN_FUNC(makepet)
 		sd->catch_target_class = pet_db[pet_id].class_;
 		intif_create_pet(
 		    sd->status.account_id, sd->status.char_id,
-		    (short)pet_db[pet_id].class_, (short)mob_db(pet_db[pet_id].class_)->lv,
+			(short)pet_db[pet_id].class_, (short)mob->db(pet_db[pet_id].class_)->lv,
 		    (short)pet_db[pet_id].EggID, 0, (short)pet_db[pet_id].intimate,
 		    100, 0, 1, pet_db[pet_id].jname);
 	}
@@ -8978,7 +8706,7 @@ BUILDIN_FUNC(monster)
 		}
 	}
 
-	if(class_ >= 0 && !mobdb_checkid(class_)) {
+	if (class_ >= 0 && !mob->db_checkid(class_)) {
 		ShowWarning("buildin_monster: Attempted to spawn non-existing monster class %d\n", class_);
 		return 1;
 	}
@@ -9002,7 +8730,7 @@ BUILDIN_FUNC(monster)
 		}
 	}
 
-	mob_id = mob_once_spawn(sd, m, x, y, str, class_, amount, event, size, ai);
+	mob_id = mob->once_spawn(sd, m, x, y, str, class_, amount, event, size, ai);
 	script_pushint(st, mob_id);
 	return 0;
 }
@@ -9013,23 +8741,23 @@ BUILDIN_FUNC(getmobdrops)
 {
 	int class_ = script_getnum(st,2);
 	int i, j = 0;
-	struct mob_db *mob;
+	struct mob_db *monster;
 
-	if(!mobdb_checkid(class_)) {
+	if (!mob->db_checkid(class_)) {
 		script_pushint(st, 0);
 		return 0;
 	}
 
-	mob = mob_db(class_);
+	monster = mob->db(class_);
 
 	for(i = 0; i < MAX_MOB_DROP; i++) {
-		if(mob->dropitem[i].nameid < 1)
+		if(monster->dropitem[i].nameid < 1)
 			continue;
-		if(itemdb_exists(mob->dropitem[i].nameid) == NULL)
+		if(itemdb_exists(monster->dropitem[i].nameid) == NULL)
 			continue;
 
-		mapreg->setreg(reference_uid(script->add_str("$@MobDrop_item"), j), mob->dropitem[i].nameid);
-		mapreg->setreg(reference_uid(script->add_str("$@MobDrop_rate"), j), mob->dropitem[i].p);
+		mapreg->setreg(reference_uid(script->add_str("$@MobDrop_item"), j), monster->dropitem[i].nameid);
+		mapreg->setreg(reference_uid(script->add_str("$@MobDrop_rate"), j), monster->dropitem[i].p);
 
 		j++;
 	}
@@ -9098,7 +8826,7 @@ BUILDIN_FUNC(areamonster)
 		}
 	}
 
-	mob_id = mob_once_spawn_area(sd, m, x0, y0, x1, y1, str, class_, amount, event, size, ai);
+	mob_id = mob->once_spawn_area(sd, m, x0, y0, x1, y1, str, class_, amount, event, size, ai);
 	script_pushint(st, mob_id);
 
 	return 0;
@@ -9254,7 +8982,7 @@ BUILDIN_FUNC(clone)
 			master_id = 0;
 	}
 	if(sd)  //Return ID of newly crafted clone.
-		script_pushint(st,mob_clone_spawn(sd, m, x, y, event, master_id, mode, flag, 1000*duration));
+		script_pushint(st, mob->clone_spawn(sd, m, x, y, event, master_id, mode, flag, 1000 * duration));
 	else //Failed to create clone.
 		script_pushint(st,0);
 
@@ -11816,7 +11544,7 @@ BUILDIN_FUNC(strmobinfo)
 	int num=script_getnum(st,2);
 	int class_=script_getnum(st,3);
 
-	if(!mobdb_checkid(class_)) {
+	if(!mob->db_checkid(class_)) {
 		if(num < 3)  //requested a string
 			script_pushconststr(st,"");
 		else
@@ -11825,13 +11553,13 @@ BUILDIN_FUNC(strmobinfo)
 	}
 
 	switch(num) {
-		case 1: script_pushstrcopy(st,mob_db(class_)->name); break;
-		case 2: script_pushstrcopy(st,mob_db(class_)->jname); break;
-		case 3: script_pushint(st,mob_db(class_)->lv); break;
-		case 4: script_pushint(st,mob_db(class_)->status.max_hp); break;
-		case 5: script_pushint(st,mob_db(class_)->status.max_sp); break;
-		case 6: script_pushint(st,mob_db(class_)->base_exp); break;
-		case 7: script_pushint(st,mob_db(class_)->job_exp); break;
+	case 1: script_pushstrcopy(st, mob->db(class_)->name); break;
+	case 2: script_pushstrcopy(st, mob->db(class_)->jname); break;
+	case 3: script_pushint(st, mob->db(class_)->lv); break;
+	case 4: script_pushint(st, mob->db(class_)->status.max_hp); break;
+	case 5: script_pushint(st, mob->db(class_)->status.max_sp); break;
+	case 6: script_pushint(st, mob->db(class_)->base_exp); break;
+	case 7: script_pushint(st, mob->db(class_)->job_exp); break;
 		default:
 			script_pushint(st,0);
 			break;
@@ -11878,7 +11606,7 @@ BUILDIN_FUNC(guardian)
 	}
 
 	script->check_event(st, evt);
-	script_pushint(st, mob_spawn_guardian(mapname, x, y, str, class_, evt, guardian, has_index));
+	script_pushint(st, mob->spawn_guardian(mapname, x, y, str, class_, evt, guardian, has_index));
 
 	return 0;
 }
@@ -12260,7 +11988,7 @@ BUILDIN_FUNC(disguise)
 
 	id = script_getnum(st,2);
 
-	if(mobdb_checkid(id) || npcdb_checkid(id)) {
+	if(mob->db_checkid(id) || npcdb_checkid(id)) {
 		pc_disguise(sd, id);
 		script_pushint(st,id);
 	} else
@@ -12768,7 +12496,7 @@ BUILDIN_FUNC(atcommand)
 		}
 	}
 
-	if(!atcommand_exec(fd, sd, cmd, false)) {
+	if (!atcommand->exec(fd, sd, cmd, false)) {
 		ShowWarning("script: buildin_atcommand: failed to execute command '%s'\n", cmd);
 		script->reportsrc(st);
 		ret = false;
@@ -13439,7 +13167,7 @@ BUILDIN_FUNC(logmes)
 		return 1;
 
 	str = script_getstr(st,2);
-	log_npc(sd,str);
+	logs->npc(sd, str);
 	return 0;
 }
 
@@ -13465,14 +13193,14 @@ BUILDIN_FUNC(summon)
 
 	clif_skill_poseffect(&sd->bl,AM_CALLHOMUN,1,sd->bl.x,sd->bl.y,tick);
 
-	md = mob_once_spawn_sub(&sd->bl, sd->bl.m, sd->bl.x, sd->bl.y, str, _class, event, SZ_MEDIUM, AI_NONE);
+	md = mob->once_spawn_sub(&sd->bl, sd->bl.m, sd->bl.x, sd->bl.y, str, _class, event, SZ_MEDIUM, AI_NONE);
 	if(md) {
 		md->master_id=sd->bl.id;
 		md->special_state.ai = AI_ATTACK;
 		if(md->deletetimer != INVALID_TIMER)
-			delete_timer(md->deletetimer, mob_timer_delete);
-		md->deletetimer = add_timer(tick+(timeout>0?timeout*1000:60000),mob_timer_delete,md->bl.id,0);
-		mob_spawn(md);  //Now it is ready for spawning.
+			delete_timer(md->deletetimer, mob->timer_delete);
+		md->deletetimer = add_timer(tick + (timeout>0 ? timeout * 1000 : 60000), mob->timer_delete, md->bl.id, 0);
+		mob->spawn(md);  //Now it is ready for spawning.
 		clif_specialeffect(&md->bl,344,AREA);
 		sc_start4(&md->bl, SC_MODECHANGE, 100, 1, 0, MD_AGGRESSIVE, 0, 60000);
 	}
@@ -14796,39 +14524,17 @@ int buildin_query_sql_sub(struct script_state *st, Sql *handle)
 
 BUILDIN_FUNC(query_sql)
 {
-#ifdef BETA_THREAD_TEST
-	if(st->state != RERUNLINE) {
-		queryThread_add(st,false);
-
-		st->state = RERUNLINE;/* will continue when the query is finished running. */
-	} else
-		st->state = RUN;
-
-	return 0;
-#else
 	return script->buildin_query_sql_sub(st, mmysql_handle);
-#endif
 }
 
 BUILDIN_FUNC(query_logsql)
 {
-	if(!log_config.sql_logs) {  // logmysql_handle == NULL
+	if(!logs->config.sql_logs) {  // logmysql_handle == NULL
 		ShowWarning("buildin_query_logsql: SQL logs are disabled, query '%s' will not be executed.\n", script_getstr(st,2));
 		script_pushint(st,-1);
 		return 1;
 	}
-#ifdef BETA_THREAD_TEST
-	if(st->state != RERUNLINE) {
-		queryThread_add(st,true);
-
-		st->state = RERUNLINE;/* will continue when the query is finished running. */
-	} else
-		st->state = RUN;
-
-	return 0;
-#else
-	return script->buildin_query_sql_sub(st, logmysql_handle);
-#endif
+	return script->buildin_query_sql_sub(st, logs->mysql_handle);
 }
 
 //Allows escaping of a given string.
@@ -15108,11 +14814,11 @@ BUILDIN_FUNC(addmonsterdrop)
 	int item_id, rate, i, c = MAX_MOB_DROP;
 
 	if(script_isstring(st,2))
-		monster = mob_db(mobdb_searchname(script_getstr(st,2)));
+		monster = mob->db(mob->db_searchname(script_getstr(st, 2)));
 	else
-		monster = mob_db(script_getnum(st,2));
+		monster = mob->db(script_getnum(st, 2));
 
-	if( monster == mob_dummy) {
+	if(monster == mob->dummy) {
 		if(script_isstringtype(st,2)) {
 			ShowError("buildin_addmonsterdrop: invalid mob name: '%s'.\n", script_getstr(st,2));
 		} else {
@@ -15169,11 +14875,11 @@ BUILDIN_FUNC(delmonsterdrop)
 	int item_id, i;
 
 	if( script_isstringtype(st,2) )
-		monster = mob_db(mobdb_searchname(script_getstr(st,2)));
+		monster = mob->db(mob->db_searchname(script_getstr(st, 2)));
 	else
-		monster = mob_db(script_getnum(st,2));
+		monster = mob->db(script_getnum(st, 2));
 
-	if(monster == mob_dummy ) {
+	if(monster == mob->dummy) {
 		if( script_isstringtype(st,2) ) {
 			ShowError("buildin_delmonsterdrop: invalid mob name: '%s'.\n", script_getstr(st,2));
 		} else {
@@ -15212,7 +14918,7 @@ BUILDIN_FUNC(getmonsterinfo)
 	int mob_id;
 
 	mob_id  = script_getnum(st,2);
-	if(!mobdb_checkid(mob_id)) {
+	if (!mob->db_checkid(mob_id)) {
 		ShowError("buildin_getmonsterinfo: Wrong Monster ID: %i\n", mob_id);
 		if(!script_getnum(st,3))    //requested a string
 			script_pushconststr(st,"null");
@@ -15220,7 +14926,7 @@ BUILDIN_FUNC(getmonsterinfo)
 			script_pushint(st,-1);
 		return -1;
 	}
-	monster = mob_db(mob_id);
+	monster = mob->db(mob_id);
 	switch(script_getnum(st,3)) {
 		case 0:  script_pushstrcopy(st,monster->jname); break;
 		case 1:  script_pushint(st,monster->lv); break;
@@ -16497,7 +16203,7 @@ BUILDIN_FUNC(bg_monster)
 	class_  = script_getnum(st,7);
 	if(script_hasdata(st,8)) evt = script_getstr(st,8);
 	script->check_event(st, evt);
-	script_pushint(st, mob_spawn_bg(mapname,x,y,str,class_,evt,bg_id));
+	script_pushint(st, mob->spawn_bg(mapname, x, y, str, class_, evt, bg_id));
 	return 0;
 }
 
@@ -17493,44 +17199,44 @@ BUILDIN_FUNC(bindatcmd)
 {
 	const char *atcmd;
 	const char *eventName;
-	int i, level = 0, level2 = 0;
+	int i, group_lv = 0, group_lv_char = 0;
 	bool create = false;
 
 	atcmd = script_getstr(st,2);
 	eventName = script_getstr(st,3);
 
-	if(*atcmd == atcommand_symbol || *atcmd == charcommand_symbol)
+	if(*atcmd == atcommand->at_symbol || *atcmd == atcommand->char_symbol)
 		atcmd++;
 
-	if(script_hasdata(st,4)) level = script_getnum(st,4);
-	if(script_hasdata(st,5)) level2 = script_getnum(st,5);
+	if (script_hasdata(st, 4)) group_lv = script_getnum(st, 4);
+	if (script_hasdata(st, 5)) group_lv_char = script_getnum(st, 5);
 
-	if(atcmd_binding_count == 0) {
-		CREATE(atcmd_binding,struct atcmd_binding_data *,1);
+	if(atcommand->binding_count == 0) {
+		CREATE(atcommand->binding, struct atcmd_binding_data*, 1);
 
 		create = true;
 	} else {
-		ARR_FIND(0, atcmd_binding_count, i, strcmp(atcmd_binding[i]->command,atcmd) == 0);
-		if(i < atcmd_binding_count) {  /* update existent entry */
-			safestrncpy(atcmd_binding[i]->npc_event, eventName, 50);
-			atcmd_binding[i]->level = level;
-			atcmd_binding[i]->level2 = level2;
+		ARR_FIND(0, atcommand->binding_count, i, strcmp(atcommand->binding[i]->command,atcmd) == 0);
+		if(i < atcommand->binding_count) {  /* update existent entry */
+			safestrncpy(atcommand->binding[i]->npc_event, eventName, 50);
+			atcommand->binding[i]->group_lv = group_lv;
+			atcommand->binding[i]->group_lv_char = group_lv_char;
 		} else
 			create = true;
 	}
 
 	if(create) {
-		i = atcmd_binding_count;
+		i = atcommand->binding_count;
 
-		if(atcmd_binding_count++ != 0)
-			RECREATE(atcmd_binding,struct atcmd_binding_data *,atcmd_binding_count);
+		if(atcommand->binding_count++ != 0)
+			RECREATE(atcommand->binding, struct atcmd_binding_data*, atcommand->binding_count);
 
-		CREATE(atcmd_binding[i],struct atcmd_binding_data,1);
+		CREATE(atcommand->binding[i], struct atcmd_binding_data, 1);
 
-		safestrncpy(atcmd_binding[i]->command, atcmd, 50);
-		safestrncpy(atcmd_binding[i]->npc_event, eventName, 50);
-		atcmd_binding[i]->level = level;
-		atcmd_binding[i]->level2 = level2;
+		safestrncpy(atcommand->binding[i]->command, atcmd, 50);
+		safestrncpy(atcommand->binding[i]->npc_event, eventName, 50);
+		atcommand->binding[i]->group_lv = group_lv;
+		atcommand->binding[i]->group_lv_char = group_lv_char;
 	}
 
 	return 0;
@@ -17543,33 +17249,33 @@ BUILDIN_FUNC(unbindatcmd)
 
 	atcmd = script_getstr(st, 2);
 
-	if(*atcmd == atcommand_symbol || *atcmd == charcommand_symbol)
+	if(*atcmd == atcommand->at_symbol || *atcmd == atcommand->char_symbol)
 		atcmd++;
 
-	if(atcmd_binding_count == 0) {
+	if(atcommand->binding_count == 0) {
 		script_pushint(st, 0);
 		return 0;
 	}
 
-	ARR_FIND(0, atcmd_binding_count, i, strcmp(atcmd_binding[i]->command, atcmd) == 0);
-	if(i < atcmd_binding_count) {
+	ARR_FIND(0, atcommand->binding_count, i, strcmp(atcommand->binding[i]->command, atcmd) == 0);
+	if(i < atcommand->binding_count) {
 		int cursor = 0;
-		aFree(atcmd_binding[i]);
-		atcmd_binding[i] = NULL;
+		aFree(atcommand->binding[i]);
+		atcommand->binding[i] = NULL;
 		/* compact the list now that we freed a slot somewhere */
-		for(i = 0, cursor = 0; i < atcmd_binding_count; i++) {
-			if(atcmd_binding[i] == NULL)
+		for(i = 0, cursor = 0; i < atcommand->binding_count; i++) {
+			if(atcommand->binding[i] == NULL)
 				continue;
 
 			if(cursor != i) {
-				memmove(&atcmd_binding[cursor], &atcmd_binding[i], sizeof(struct atcmd_binding_data *));
+				memmove(&atcommand->binding[cursor], &atcommand->binding[i], sizeof(struct atcmd_binding_data*));
 			}
 
 			cursor++;
 		}
 
-		if((atcmd_binding_count = cursor) == 0)
-			aFree(atcmd_binding);
+		if((atcommand->binding_count = cursor) == 0)
+			aFree(atcommand->binding);
 
 		script_pushint(st, 1);
 	} else
@@ -17603,13 +17309,13 @@ BUILDIN_FUNC(useatcmd)
 	}
 
 	// compatibility with previous implementation (deprecated!)
-	if(cmd[0] != atcommand_symbol) {
+	if(cmd[0] != atcommand->at_symbol) {
 		cmd += strlen(sd->status.name);
-		while(*cmd != atcommand_symbol && *cmd != 0)
+		while(*cmd != atcommand->at_symbol && *cmd != 0)
 			cmd++;
 	}
 
-	atcommand_exec(fd, sd, cmd, true);
+	atcommand->exec(fd, sd, cmd, true);
 	if (dummy_sd) aFree(dummy_sd);
 	return 0;
 }
@@ -17893,9 +17599,9 @@ BUILDIN_FUNC(montransform) {
 		return 0;
 
 	if(script_isstringtype(st, 2))
-		mob_id = mobdb_searchname(script_getstr(st, 2));
+		mob_id = mob->db_searchname(script_getstr(st, 2));
 	else{
-		mob_id = mobdb_checkid(script_getnum(st, 2));
+		mob_id = mob->db_checkid(script_getnum(st, 2));
 	}
 
 	if(mob_id == 0) {
@@ -17929,7 +17635,7 @@ BUILDIN_FUNC(montransform) {
 
 	if(tick != 0) {
 		struct map_session_data *sd = map_id2sd(bl->id);
-		struct mob_db *monster =  mob_db(mob_id);
+		struct mob_db *monster = mob->db(mob_id);
 
 		if(!sd)	return 0;
 

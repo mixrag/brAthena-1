@@ -74,7 +74,6 @@ static struct packet_viewequip_ack viewequip_list;
 
 /* for clif_clearunit_delayed */
 static struct eri *delay_clearunit_ers;
-static DBMap* channel_db; // channels 
 DBMap* clif_get_channel_db(void){ return channel_db; }
 
 static struct packet_npc_market_result_ack npcmarket_result;
@@ -2703,7 +2702,7 @@ void clif_read_channels_config(void) {
 	chsys = config_lookup(&channels_conf, "chsys");
 
 	if (chsys != NULL) {
-		config_setting_t *settings = config_setting_get_elem(chsys, 0);
+		config_setting_t *settings = libconfig->setting_get_elem(chsys, 0);
 		config_setting_t *channels;
 		config_setting_t *colors;
 		int i,k;
@@ -2713,53 +2712,53 @@ void clif_read_channels_config(void) {
 			local_autojoin = 0, ally_autojoin = 0,
 			allow_user_channel_creation = 0;
 
-		if(!config_setting_lookup_string(settings, "map_local_channel_name", &local_name))
+		if(!libconfig->setting_lookup_string(settings, "map_local_channel_name", &local_name))
 			local_name = "map";
 		safestrncpy(raChSys.local_name, local_name, RACHSYS_NAME_LENGTH);
 
-		if(!config_setting_lookup_string(settings, "ally_channel_name", &ally_name))
+		if(!libconfig->setting_lookup_string(settings, "ally_channel_name", &ally_name))
 			ally_name = "ally";
 		safestrncpy(raChSys.ally_name, ally_name, RACHSYS_NAME_LENGTH);
 
-		config_setting_lookup_bool(settings, "map_local_channel", &local_enabled);
-		config_setting_lookup_bool(settings, "ally_channel_enabled", &ally_enabled);
+		libconfig->setting_lookup_bool(settings, "map_local_channel", &local_enabled);
+		libconfig->setting_lookup_bool(settings, "ally_channel_enabled", &ally_enabled);
 
 		if( local_enabled )
 			raChSys.local = true;
 		if( ally_enabled )
 			raChSys.ally = true;
 
-		config_setting_lookup_bool(settings, "map_local_channel_autojoin", &local_autojoin);
-		config_setting_lookup_bool(settings, "ally_channel_autojoin", &ally_autojoin);
+		libconfig->setting_lookup_bool(settings, "map_local_channel_autojoin", &local_autojoin);
+		libconfig->setting_lookup_bool(settings, "ally_channel_autojoin", &ally_autojoin);
 
 		if(local_autojoin)
 			raChSys.local_autojoin = true;
 		if(ally_autojoin)
 			raChSys.ally_autojoin = true;
 
-		config_setting_lookup_bool(settings, "allow_user_channel_creation", &allow_user_channel_creation);
+		libconfig->setting_lookup_bool(settings, "allow_user_channel_creation", &allow_user_channel_creation);
 
 		if(allow_user_channel_creation)
 			raChSys.allow_user_channel_creation = true;
 
-		if((colors = config_setting_get_member(settings, "colors")) != NULL) {
-			int color_count = config_setting_length(colors);
+		if((colors = libconfig->setting_get_member(settings, "colors")) != NULL) {
+			int color_count = libconfig->setting_length(colors);
 			CREATE(raChSys.colors, unsigned int, color_count);
 			CREATE(raChSys.colors_name, char *, color_count);
 			for(i = 0; i < color_count; i++) {
-				config_setting_t *color = config_setting_get_elem(colors, i);
+				config_setting_t *color = libconfig->setting_get_elem(colors, i);
 
 				CREATE(raChSys.colors_name[i], char, RACHSYS_NAME_LENGTH);
 
 				safestrncpy(raChSys.colors_name[i], config_setting_name(color), RACHSYS_NAME_LENGTH);
 
-				raChSys.colors[i] = (unsigned int)strtoul(config_setting_get_string_elem(colors,i),NULL,0);
+				raChSys.colors[i] = (unsigned int)strtoul(libconfig->setting_get_string_elem(colors,i),NULL,0);
 				raChSys.colors[i] = (raChSys.colors[i] & 0x0000FF) << 16 | (raChSys.colors[i] & 0x00FF00) | (raChSys.colors[i] & 0xFF0000) >> 16;//RGB to BGR
 			}
 			raChSys.colors_count = color_count;
 		}
 
-		config_setting_lookup_string(settings, "map_local_channel_color", &local_color);
+		libconfig->setting_lookup_string(settings, "map_local_channel_color", &local_color);
 
 		for (k = 0; k < raChSys.colors_count; k++) {
 			if(strcmpi(raChSys.colors_name[k],local_color) == 0)
@@ -2773,7 +2772,7 @@ void clif_read_channels_config(void) {
 			raChSys.local = false;
 		}
 
-		config_setting_lookup_string(settings, "ally_channel_color", &ally_color);
+		libconfig->setting_lookup_string(settings, "ally_channel_color", &ally_color);
 
 		for (k = 0; k < raChSys.colors_count; k++) {
 			if(strcmpi(raChSys.colors_name[k],ally_color) == 0)
@@ -2787,13 +2786,13 @@ void clif_read_channels_config(void) {
 			raChSys.ally = false;
 		}
 
-		if((channels = config_setting_get_member(settings, "default_channels")) != NULL) {
-			int channel_count = config_setting_length(channels);
+		if ((channels = libconfig->setting_get_member(settings, "default_channels")) != NULL) {
+			int channel_count = libconfig->setting_length(channels);
 
 			for(i = 0; i < channel_count; i++) {
-				config_setting_t *channel = config_setting_get_elem(channels, i);
+				config_setting_t *channel = libconfig->setting_get_elem(channels, i);
 				const char *name = config_setting_name(channel);
-				const char *color = config_setting_get_string_elem(channels,i);
+				const char *color = libconfig->setting_get_string_elem(channels, i);
 				struct raChSysCh *chd;
 
 				for (k = 0; k < raChSys.colors_count; k++) {
@@ -2819,7 +2818,7 @@ void clif_read_channels_config(void) {
 		}
 
 		ShowConf("Leitura de '"CL_WHITE"%d"CL_RESET"' canais em '"CL_WHITE"%s"CL_RESET"'.\n", db_size(channel_db), config_filename);
-		config_destroy(&channels_conf);
+		libconfig->destroy(&channels_conf);
 	}
 }
 
@@ -8773,8 +8772,9 @@ void clif_hate_info(struct map_session_data *sd, unsigned char hate_level,int cl
 {
 	if(pcdb_checkid(class_)) {
 		clif_starskill(sd, job_name(class_), class_, hate_level, type ? 10 : 11);
-	} else if(mobdb_checkid(class_)) {
-		clif_starskill(sd, mob_db(class_)->jname, class_, hate_level, type ? 10 : 11);
+	}
+	else if (mob->db_checkid(class_)) {
+		clif_starskill(sd, mob->db(class_)->jname, class_, hate_level, type ? 10 : 11);
 	} else {
 		ShowWarning("clif_hate_info: Received invalid class %d for this packet (char_id=%d, hate_level=%u, type=%u).\n", class_, sd->status.char_id, (unsigned int)hate_level, (unsigned int)type);
 	}
@@ -8785,7 +8785,7 @@ void clif_hate_info(struct map_session_data *sd, unsigned char hate_level,int cl
  *------------------------------------------*/
 void clif_mission_info(struct map_session_data *sd, int mob_id, unsigned char progress)
 {
-	clif_starskill(sd, mob_db(mob_id)->jname, mob_id, progress, 20);
+	clif_starskill(sd, mob->db(mob_id)->jname, mob_id, progress, 20);
 }
 
 /*==========================================
@@ -9780,7 +9780,7 @@ void clif_parse_GlobalMessage(int fd, struct map_session_data *sd)
 	if(!clif_process_message(sd, 0, &name, &namelen, &message, &messagelen))
 		return;
 
-	if(atcommand_exec(fd, sd, message, true))
+	if (atcommand->exec(fd, sd, message, true))
 		return;
 
 	if(sd->sc.data[SC_BERSERK] || sd->sc.data[SC_DEEP_SLEEP] || (sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOCHAT))
@@ -9902,7 +9902,7 @@ void clif_parse_GlobalMessage(int fd, struct map_session_data *sd)
 	sd->idletime = sockt->last_tick;
 
 	// Chat logging type 'O' / Global Chat
-	log_chat(LOG_CHAT_GLOBAL, 0, sd->status.char_id, sd->status.account_id, mapindex_id2name(sd->mapindex), sd->bl.x, sd->bl.y, NULL, message);
+	logs->chat(LOG_CHAT_GLOBAL, 0, sd->status.char_id, sd->status.account_id, mapindex_id2name(sd->mapindex), sd->bl.x, sd->bl.y, NULL, message);
 }
 
 
@@ -9916,8 +9916,8 @@ void clif_parse_MapMove(int fd, struct map_session_data *sd)
 
 	map_name = (char *)RFIFOP(fd,2);
 	map_name[MAP_NAME_LENGTH_EXT-1]='\0';
-	sprintf(command, "%cmapmove %s %d %d", atcommand_symbol, map_name, RFIFOW(fd,18), RFIFOW(fd,20));
-	atcommand_exec(fd, sd, command, true);
+	sprintf(command, "%cmapmove %s %d %d", atcommand->at_symbol, map_name, RFIFOW(fd, 18), RFIFOW(fd, 20));
+	atcommand->exec(fd, sd, command, true);
 }
 
 
@@ -10292,7 +10292,7 @@ void clif_parse_WisMessage(int fd, struct map_session_data *sd)
 	if(!clif_process_message(sd, 1, &target, &namelen, &message, &messagelen))
 		return;
 
-	if(atcommand_exec(fd, sd, message, true))
+	if(atcommand->exec(fd, sd, message, true))
 		return;
 
 	if(sd->sc.data[SC_BERSERK] || sd->sc.data[SC_DEEP_SLEEP] || (sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOCHAT))
@@ -10310,7 +10310,7 @@ void clif_parse_WisMessage(int fd, struct map_session_data *sd)
 		sd->idletime = sockt->last_tick;
 
 	// Chat logging type 'W' / Whisper
-	log_chat(LOG_CHAT_WHISPER, 0, sd->status.char_id, sd->status.account_id, mapindex_id2name(sd->mapindex), sd->bl.x, sd->bl.y, target, message);
+	logs->chat(LOG_CHAT_WHISPER, 0, sd->status.char_id, sd->status.account_id, mapindex_id2name(sd->mapindex), sd->bl.x, sd->bl.y, target, message);
 
 	//-------------------------------------------------------//
 	//   Lordalfa - Paperboy - To whisper NPC commands       //
@@ -10452,8 +10452,8 @@ void clif_parse_Broadcast(int fd, struct map_session_data *sd)
 	// as the length varies depending on the command used, just block unreasonably long strings
 	mes_len_check(msg, len, CHAT_SIZE_MAX);
 
-	sprintf(command, "%ckami %s", atcommand_symbol, msg);
-	atcommand_exec(fd, sd, command, true);
+	sprintf(command, "%ckami %s", atcommand->at_symbol, msg);
+	atcommand->exec(fd, sd, command, true);
 }
 
 
@@ -11150,7 +11150,7 @@ void clif_parse_ChangeCart(int fd,struct map_session_data *sd)
 ///     the like
 void clif_parse_StatusUp(int fd,struct map_session_data *sd)
 {
-	pc_statusup(sd,RFIFOW(fd,2));
+	pc_statusup(sd,RFIFOW(fd,2), RFIFOB(fd, 4));
 }
 
 
@@ -11800,11 +11800,11 @@ void clif_parse_ResetChar(int fd, struct map_session_data *sd)
 	char cmd[15];
 
 	if(RFIFOW(fd,2))
-		sprintf(cmd,"%cskreset",atcommand_symbol);
+		sprintf(cmd, "%cskreset", atcommand->at_symbol);
 	else
-		sprintf(cmd,"%cstreset",atcommand_symbol);
+		sprintf(cmd, "%cstreset", atcommand->at_symbol);
 
-	atcommand_exec(fd, sd, cmd, true);
+	atcommand->exec(fd, sd, cmd, true);
 }
 
 
@@ -11820,8 +11820,8 @@ void clif_parse_LocalBroadcast(int fd, struct map_session_data *sd)
 	// as the length varies depending on the command used, just block unreasonably long strings
 	mes_len_check(msg, len, CHAT_SIZE_MAX);
 
-	sprintf(command, "%clkami %s", atcommand_symbol, msg);
-	atcommand_exec(fd, sd, command, true);
+	sprintf(command, "%clkami %s", atcommand->at_symbol, msg);
+	atcommand->exec(fd, sd, command, true);
 }
 
 
@@ -12140,7 +12140,7 @@ void clif_parse_PartyMessage(int fd, struct map_session_data *sd)
 	if(!clif_process_message(sd, 0, &name, &namelen, &message, &messagelen))
 		return;
 
-	if(atcommand_exec(fd, sd, message, true))
+	if(atcommand->exec(fd, sd, message, true))
 		return;
 
 	if(sd->sc.data[SC_BERSERK] || sd->sc.data[SC_DEEP_SLEEP] || (sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOCHAT))
@@ -13211,7 +13211,7 @@ void clif_parse_GuildMessage(int fd, struct map_session_data *sd)
 	if(!clif_process_message(sd, 0, &name, &namelen, &message, &messagelen))
 		return;
 
-	if(atcommand_exec(fd, sd, message, true))
+	if(atcommand->exec(fd, sd, message, true))
 		return;
 
 	if(sd->sc.data[SC_BERSERK] || sd->sc.data[SC_DEEP_SLEEP] || (sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOCHAT))
@@ -13430,8 +13430,8 @@ void clif_parse_GMKick(int fd, struct map_session_data *sd)
 	switch(target->type) {
 		case BL_PC: {
 				char command[NAME_LENGTH+6];
-				sprintf(command, "%ckick %s", atcommand_symbol, status->get_name(target));
-				atcommand_exec(fd, sd, command, true);
+				sprintf(command, "%ckick %s", atcommand->at_symbol, status->get_name(target));
+				atcommand->exec(fd, sd, command, true);
 			}
 			break;
 
@@ -13445,7 +13445,7 @@ void clif_parse_GMKick(int fd, struct map_session_data *sd)
 					return;
 				}
 				sprintf(command, "/kick %s (%d)", status->get_name(target), status->get_class(target));
-				log_atcommand(sd, command);
+				logs->atcommand(sd, command);
 				status_percent_damage(&sd->bl, target, 100, 0, true); // can invalidate 'target'
 			}
 			break;
@@ -13475,8 +13475,8 @@ void clif_parse_GMKick(int fd, struct map_session_data *sd)
 void clif_parse_GMKickAll(int fd, struct map_session_data *sd)
 {
 	char cmd[15];
-	sprintf(cmd,"%ckickall",atcommand_symbol);
-	atcommand_exec(fd, sd, cmd, true);
+	sprintf(cmd, "%ckickall", atcommand->at_symbol);
+	atcommand->exec(fd, sd, cmd, true);
 }
 
 
@@ -13496,8 +13496,8 @@ void clif_parse_GMShift(int fd, struct map_session_data *sd)
 	player_name = (char *)RFIFOP(fd,2);
 	player_name[NAME_LENGTH-1] = '\0';
 
-	sprintf(command, "%cjumpto %s", atcommand_symbol, player_name);
-	atcommand_exec(fd, sd, command, true);
+	sprintf(command, "%cjumpto %s", atcommand->at_symbol, player_name);
+	atcommand->exec(fd, sd, command, true);
 }
 
 
@@ -13512,8 +13512,8 @@ void clif_parse_GMRemove2(int fd, struct map_session_data *sd)
 	account_id = RFIFOL(fd,packet_db[RFIFOW(fd,0)].pos[0]);
 	if((pl_sd = map_id2sd(account_id)) != NULL) {
 		char command[NAME_LENGTH+8];
-		sprintf(command, "%cjumpto %s", atcommand_symbol, pl_sd->status.name);
-		atcommand_exec(fd, sd, command, true);
+		sprintf(command, "%cjumpto %s", atcommand->at_symbol, pl_sd->status.name);
+		atcommand->exec(fd, sd, command, true);
 	}
 }
 
@@ -13534,8 +13534,8 @@ void clif_parse_GMRecall(int fd, struct map_session_data *sd)
 	player_name = (char *)RFIFOP(fd,2);
 	player_name[NAME_LENGTH-1] = '\0';
 
-	sprintf(command, "%crecall %s", atcommand_symbol, player_name);
-	atcommand_exec(fd, sd, command, true);
+	sprintf(command, "%crecall %s", atcommand->at_symbol, player_name);
+	atcommand->exec(fd, sd, command, true);
 }
 
 
@@ -13550,8 +13550,8 @@ void clif_parse_GMRecall2(int fd, struct map_session_data *sd)
 	account_id = RFIFOL(fd,packet_db[RFIFOW(fd,0)].pos[0]);
 	if((pl_sd = map_id2sd(account_id)) != NULL) {
 		char command[NAME_LENGTH+8];
-		sprintf(command, "%crecall %s", atcommand_symbol, pl_sd->status.name);
-		atcommand_exec(fd, sd, command, true);
+		sprintf(command, "%crecall %s", atcommand->at_symbol, pl_sd->status.name);
+		atcommand->exec(fd, sd, command, true);
 	}
 }
 
@@ -13593,21 +13593,21 @@ void clif_parse_GM_Monster_Item(int fd, struct map_session_data *sd)
 
 		if(i < count) {
 			if( item_array[i]->type == IT_WEAPON || item_array[i]->type == IT_ARMOR) // nonstackable
-				snprintf(command, sizeof(command)-1, "%citem2 %d 1 0 0 0 0 0 0 0", atcommand_symbol, item_array[i]->nameid);
+				snprintf(command, sizeof(command)-1, "%citem2 %d 1 0 0 0 0 0 0 0", atcommand->at_symbol, item_array[i]->nameid);
 			else
-				snprintf(command, sizeof(command)-1, "%citem %d 20", atcommand_symbol, item_array[i]->nameid);
-			atcommand_exec(fd, sd, command, true);
+				snprintf(command, sizeof(command)-1, "%citem %d 20", atcommand->at_symbol, item_array[i]->nameid);
+			atcommand->exec(fd, sd, command, true);
 			return;
 		}
 	}
 
 	if(strcmp("money", item_monster_name) == 0) {
-		snprintf(command, sizeof(command)-1, "%czeny %d", atcommand_symbol, INT_MAX);
-		atcommand_exec(fd, sd, command, true);
+		snprintf(command, sizeof(command)-1, "%czeny %d", atcommand->at_symbol, INT_MAX);
+		atcommand->exec(fd, sd, command, true);
 		return;
 	}
 
-	if((count=mobdb_searchname_array(mob_array, 10, item_monster_name, 1)) > 0) {
+	if((count = mob->db_searchname_array(mob_array, 10, item_monster_name, 1)) > 0) {
 		for(i = 0; i < count; i++) {
 			if(!mob_array[i])
 				continue;
@@ -13619,8 +13619,8 @@ void clif_parse_GM_Monster_Item(int fd, struct map_session_data *sd)
 		}
 
 		if(i < count) {
-			snprintf(command, sizeof(command)-1, "%cmonster %s", atcommand_symbol, mob_array[i]->sprite);
-			atcommand_exec(fd, sd, command, true);
+			snprintf(command, sizeof(command)-1, "%cmonster %s", atcommand->at_symbol, mob_array[i]->sprite);
+			atcommand->exec(fd, sd, command, true);
 		}
 	}
 }
@@ -13634,9 +13634,9 @@ void clif_parse_GMHide(int fd, struct map_session_data *sd)
 {
 	char cmd[6];
 
-	sprintf(cmd,"%chide",atcommand_symbol);
+	sprintf(cmd, "%chide", atcommand->at_symbol);
 
-	atcommand_exec(fd, sd, cmd, true);
+	atcommand->exec(fd, sd, cmd, true);
 }
 
 
@@ -13690,8 +13690,8 @@ void clif_parse_GMReqNoChat(int fd,struct map_session_data *sd)
 			clif_GM_silence(sd, dstsd, type);
 	}
 
-	sprintf(command, "%cmute %d %s", atcommand_symbol, value, dstsd->status.name);
-	atcommand_exec(fd, sd, command, true);
+	sprintf(command, "%cmute %d %s", atcommand->at_symbol, value, dstsd->status.name);
+	atcommand->exec(fd, sd, command, true);
 }
 
 
@@ -13704,8 +13704,8 @@ void clif_parse_GMRc(int fd, struct map_session_data *sd)
 	char *name = (char *)RFIFOP(fd,2);
 
 	name[NAME_LENGTH-1] = '\0';
-	sprintf(command, "%cmute %d %s", atcommand_symbol, 60, name);
-	atcommand_exec(fd, sd, command, true);
+	sprintf(command, "%cmute %d %s", atcommand->at_symbol, 60, name);
+	atcommand->exec(fd, sd, command, true);
 }
 
 /// Result of request to resolve account name (ZC_ACK_ACCOUNTNAME).
@@ -15817,7 +15817,7 @@ void clif_quest_send_mission(struct map_session_data *sd)
 		for(j = 0 ; j < qi->num_objectives; j++) {
 			WFIFOL(fd, i*104+22+j*30) = qi->mob[j];
 			WFIFOW(fd, i*104+26+j*30) = sd->quest_log[i].count[j];
-			monster = mob_db(qi->mob[j]);
+			monster = mob->db(qi->mob[j]);
 			memcpy(WFIFOP(fd, i*104+28+j*30), monster->jname, NAME_LENGTH);
 		}
 	}
@@ -15845,7 +15845,7 @@ void clif_quest_add(struct map_session_data *sd, struct quest *qd) {
 	for(i = 0; i < qi->num_objectives; i++) {
 		WFIFOL(fd, i*30+17) = qi->mob[i];
 		WFIFOW(fd, i*30+21) = qd->count[i];
-		monster = mob_db(qi->mob[i]);
+		monster = mob->db(qi->mob[i]);
 		memcpy(WFIFOP(fd, i*30+23), monster->jname, NAME_LENGTH);
 	}
 
@@ -16245,7 +16245,7 @@ void clif_parse_BattleChat(int fd, struct map_session_data *sd)
 	if(!clif_process_message(sd, 0, &name, &namelen, &message, &messagelen))
 		return;
 
-	if(atcommand_exec(fd, sd, message, true))
+	if(atcommand->exec(fd, sd, message, true))
 		return;
 
 	if(sd->sc.data[SC_BERSERK] || sd->sc.data[SC_DEEP_SLEEP] || (sd->sc.data[SC_NOCHAT] && sd->sc.data[SC_NOCHAT]->val1&MANNER_NOCHAT))
@@ -17167,16 +17167,15 @@ int clif_elementalconverter_list(struct map_session_data *sd)
 /**
  * Rune Knight
  **/
-void clif_millenniumshield(struct map_session_data *sd, short shields)
-{
+void clif_millenniumshield(struct block_list *bl, short shields) {
 #if PACKETVER >= 20081217
 	unsigned char buf[10];
 
 	WBUFW(buf,0) = 0x440;
-	WBUFL(buf,2) = sd->bl.id;
+	WBUFL(buf,2) = bl->id;
 	WBUFW(buf,6) = shields;
 	WBUFW(buf,8) = 0;
-	clif_send(buf,packet_len(0x440),&sd->bl,AREA);
+	clif_send(buf,packet_len(0x440),bl,AREA);
 #endif
 }
 /**
@@ -17456,20 +17455,20 @@ void clif_cashshop_db(void) {
 	
 	cashshop = config_lookup(&cashshop_conf, "cash_shop");
 
-	if(cashshop != NULL && (cats = config_setting_get_elem(cashshop, 0)) != NULL) {
+	if(cashshop != NULL && (cats = libconfig->setting_get_elem(cashshop, 0)) != NULL) {
 		for(i = 0; i < CASHSHOP_TAB_MAX; i++) {
 		config_setting_t *cat;
 			char entry_name[10];
 
 			sprintf(entry_name,"cat_%d",i);
 
-			if((cat = config_setting_get_member(cats, entry_name)) != NULL) {
-				int k, item_count = config_setting_length(cat);
+			if((cat = libconfig->setting_get_member(cats, entry_name)) != NULL) {
+				int k, item_count = libconfig->setting_length(cat);
 
 					for(k = 0; k < item_count; k++) {
-						config_setting_t *entry = config_setting_get_elem(cat,k);
+						config_setting_t *entry = libconfig->setting_get_elem(cat, k);
 						const char *name = config_setting_name(entry);
-						int price = config_setting_get_int(entry);
+						int price = libconfig->setting_get_int(entry);
 						struct item_data * data = NULL;
 
 						if( price < 1 ) {
@@ -17500,7 +17499,7 @@ void clif_cashshop_db(void) {
 				}
 			}
 
-			config_destroy(&cashshop_conf);
+			libconfig->destroy(&cashshop_conf);
 		}
 	
 		ShowConf("Leitura de '"CL_WHITE"%d"CL_RESET"' entradas na tabela '"CL_WHITE"%s"CL_RESET"'.\n", item_count_t, config_filename);
@@ -18434,6 +18433,8 @@ void clif_pcbangplayingtime(struct map_session_data *sd, int time)
 
 	p.PacketType = pcbangplayingtimeType;
 	p.TimeMinute = time;
+
+	clif_send(&p,sizeof(p), &sd->bl, SELF);
 #else
 	return;
 #endif

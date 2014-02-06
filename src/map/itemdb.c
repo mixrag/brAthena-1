@@ -32,7 +32,7 @@
 #include <string.h>
 
 static struct item_data *itemdb_array[MAX_ITEMDB];
-static DBMap            *itemdb_other;// int nameid -> struct item_data*
+static DBMap *itemdb_other;// int nameid -> struct item_data*
 
 struct item_data dummy_item; //This is the default dummy item used for non-existant items. [Skotlex]
 
@@ -923,13 +923,13 @@ void itemdb_read_packages(void) {
 		return;
 	}
 
-	must = aMalloc( config_setting_length(item_packages_conf.root) * sizeof(unsigned int) );
-	random = aMalloc( config_setting_length(item_packages_conf.root) * sizeof(unsigned int) );
-	rgroup = aMalloc( config_setting_length(item_packages_conf.root) * sizeof(unsigned int) );
-	rgroups = aMalloc( config_setting_length(item_packages_conf.root) * sizeof(unsigned int *) );
+	must = aMalloc(libconfig->setting_length(item_packages_conf.root) * sizeof(unsigned int));
+	random = aMalloc(libconfig->setting_length(item_packages_conf.root) * sizeof(unsigned int));
+	rgroup = aMalloc(libconfig->setting_length(item_packages_conf.root) * sizeof(unsigned int));
+	rgroups = aMalloc(libconfig->setting_length(item_packages_conf.root) * sizeof(unsigned int *));
 
 
-	for(i = 0; i < config_setting_length(item_packages_conf.root); i++) {
+	for (i = 0; i < libconfig->setting_length(item_packages_conf.root); i++) {
 		must[i] = 0;
 		random[i] = 0;
 		rgroup[i] = 0;
@@ -938,27 +938,27 @@ void itemdb_read_packages(void) {
 
 	/* validate tree, drop poisonous fruits! */
 	i = 0;
-	while((itg = config_setting_get_elem(item_packages_conf.root,i++))) {
+	while((itg = libconfig->setting_get_elem(item_packages_conf.root,i++))) {
 		const char *name = config_setting_name(itg);
 		
 		if(!itemdb->name2id(name)) {
 			ShowWarning("itemdb_read_packages: pacote '%s' desconhecido, saltando..\n",name);
-			config_setting_remove(item_packages_conf.root, name);
+			libconfig->setting_remove(item_packages_conf.root, name);
 			--i;
 			continue;
 		}
 
 		c = 0;
-		while((it = config_setting_get_elem(itg,c++))) {
+		while((it = libconfig->setting_get_elem(itg,c++))) {
 			int rval = 0;
-			const char *itname, *name2;
-			if(!(t = config_setting_get_member(it,"item")) || !(itname = config_setting_get_string(t))) {
+			const char *name2;
+			if(!(t = libconfig->setting_get_member(it,"item")) || !(itname = config_setting_get_string(t))) {
 				ShowWarning("itemdb_read_packages: Valor do campo 'item' inválido no item '%d' do pacote '%s'. Ignorando entrada...\n",c,name);
-				config_setting_remove_elem(itg,c-1);
+				libconfig->setting_remove_elem(itg, c - 1);
 				--c;
 				continue;
 			}
-			if(!(t = config_setting_get_member(it,"name")) || !(name2 = config_setting_get_string(t))) {
+			if(!(t = libconfig->setting_get_member(it,"name")) || !(name2 = config_setting_get_string(t))) {
 				ShowWarning("itemdb_read_packages: valor de 'name' inválido para o item '%s' no pacote '%s', padronizando para 'must'!\n",itname,name);
 				config_setting_remove_elem(itg,c-1);
 				--c;
@@ -985,7 +985,7 @@ void itemdb_read_packages(void) {
 		prev[i] = NULL;
 	}
 
-	for(i = 0; i < config_setting_length(item_packages_conf.root); i++) {
+	for(i = 0; i < libconfig->setting_length(item_packages_conf.root); i++) {
 		rgroups[i] = aMalloc( rgroup[i] * sizeof(unsigned int));
 		for(c = 0; c < rgroup[i]; c++) {
 			rgroups[i][c] = 0;
@@ -994,13 +994,13 @@ void itemdb_read_packages(void) {
 	
 	/* grab the known sizes */
 	i = 0;
-	while( (itg = config_setting_get_elem(item_packages_conf.root,i++)) ) {
+	while( (itg = libconfig->setting_get_elem(item_packages_conf.root,i++)) ) {
 	   c = 0;
-	   while((it = config_setting_get_elem(itg,c++))) {
+	   while((it = libconfig->setting_get_elem(itg, c++))) {
 			const char *name;
 			int rval = 0;
-			if((t = config_setting_get_member(it, "name"))
-			&& (name = config_setting_get_string(t))
+			if((t = libconfig->setting_get_member(it, "name"))
+			&& (name = libconfig->setting_get_string(t))
 			&& (strstr(name,"random") != NULL)) {
 				rval = atoi(name+6);
 				rgroups[i - 1][rval - 1] += 1;
@@ -1008,12 +1008,12 @@ void itemdb_read_packages(void) {
 	   }
 	}
 
-	CREATE(itemdb->packages, struct item_package, config_setting_length(item_packages_conf.root));
-	itemdb->package_count = (unsigned short)config_setting_length(item_packages_conf.root);
+	CREATE(itemdb->packages, struct item_package, libconfig->setting_length(item_packages_conf.root));
+	itemdb->package_count = (unsigned short)libconfig->setting_length(item_packages_conf.root);
 	
 	/* write */
 	i = 0;
-	while((itg = config_setting_get_elem(item_packages_conf.root,i++))) {
+	while((itg = libconfig->setting_get_elem(item_packages_conf.root,i++))) {
 		struct item_data *data = itemdb->name2id(config_setting_name(itg));
 		int r = 0, m = 0;
 		
@@ -1041,11 +1041,11 @@ void itemdb_read_packages(void) {
 			CREATE(itemdb->packages[cnt].must_items, struct item_package_must_entry, itemdb->packages[cnt].must_qty);
 		
 		c = 0;
-		while((it = config_setting_get_elem(itg,c++))) {
+		while((it = libconfig->setting_get_elem(itg,c++))) {
 			int icnt = 1, hour = 0, probability = 10000, gid = 0;
 			bool onair = false, guid = false;
 
-			t = config_setting_get_member(it,"item");
+			t = libconfig->setting_get_member(it, "item");
 			itname = config_setting_get_string(t);
 
 			if(itname[0] == 'I' && itname[1] == 'D' && strlen(itname) < 8) {
@@ -1054,47 +1054,47 @@ void itemdb_read_packages(void) {
 			} else if(!(data = itemdb->name2id(itname)))
 				ShowWarning("itemdb_read_packages: item '%s' desconhecido no pacote '%s'!\n",itname,config_setting_name(itg));
 
-			if(!(t = config_setting_get_member(it, "cnt"))) {
+			if(!(t = libconfig->setting_get_member(it, "cnt"))) {
 				ShowWarning("itemdb_read_packages: falta o campo 'cnt' para o item '%s' no pacote '%s'.\n",itname,config_setting_name(itg));
 			}
 
-			if((t = config_setting_get_member(it, "cnt")))
+			if((t = libconfig->setting_get_member(it, "cnt")))
 				icnt = config_setting_get_int(t);
 
-			if(!(t = config_setting_get_member(it, "hour"))) {
+			if(!(t = libconfig->setting_get_member(it, "hour"))) {
 				ShowWarning("itemdb_read_packages: falta o campo 'hour' para o item '%s' no pacote '%s'.\n",itname,config_setting_name(itg));
 			}
 
-			if((t = config_setting_get_member(it, "hour")))
+			if((t = libconfig->setting_get_member(it, "hour")))
 				hour = config_setting_get_int(t);
 
-			if(!(t = config_setting_get_member(it, "probability"))) {
+			if(!(t = libconfig->setting_get_member(it, "probability"))) {
 				ShowWarning("itemdb_read_packages: falta o campo 'probability' para o item '%s' no pacote '%s'.\n",itname,config_setting_name(itg));
 				return;
 			}
 
-			if((t = config_setting_get_member(it, "probability"))) {
+			if((t = libconfig->setting_get_member(it, "probability"))) {
 				if((probability = (unsigned short)config_setting_get_int(t)) > 10000 ) {
 					ShowWarning("itemdb_read_packages: taxa ('%d') inválida  para o item '%s' no pacote '%s'!\n",probability,itname,config_setting_name(itg));
 					probability = 10000;
 				}
 			}
 
-			if(!(t = config_setting_get_member(it, "onair"))) {
+			if(!(t = libconfig->setting_get_member(it, "onair"))) {
 				ShowWarning("itemdb_read_packages: falta o campo 'onair' para o item '%s' no pacote '%s'.\n",itname,config_setting_name(itg));
 			}
 
-			if((t = config_setting_get_member(it, "onair")) && config_setting_get_bool(t))
+			if((t = libconfig->setting_get_member(it, "onair")) && config_setting_get_bool(t))
 				onair = true;
 
-			if(!(t = config_setting_get_member(it, "guid"))) {
+			if(!(t = libconfig->setting_get_member(it, "guid"))) {
 				ShowWarning("itemdb_read_packages: falta o campo 'guid' para o item '%s' no pacote '%s'.\n",itname,config_setting_name(itg));
 			}
 
-			if((t = config_setting_get_member(it, "guid")) && config_setting_get_bool(t))
+			if((t = libconfig->setting_get_member(it, "guid")) && config_setting_get_bool(t))
 				guid = true;
 
-			if((t = config_setting_get_member(it, "name"))) {
+			if((t = libconfig->setting_get_member(it, "name"))) {
 				const char *name = config_setting_get_string(t);
 				if(strstr(name,"random"))
 					gid = atoi(name+6);
@@ -1169,7 +1169,7 @@ void itemdb_read_packages(void) {
 static bool ItemMoveInfo(char *str[], int columns, int current)
 {
 	// <nameid>,<mask>,<gm level>
-	int nameid, drop, trade, storage, cart, vending, mail, auction, bindonequip, gmlv;
+	int nameid, drop, trade, storage, cart, sell, mail, auction, bindonequip, gmlv;
 	struct item_data *id;
 
 	nameid = atoi(str[0]);
@@ -1185,7 +1185,7 @@ static bool ItemMoveInfo(char *str[], int columns, int current)
 	trade = atoi(str[2]);
 	storage = atoi(str[3]);
 	cart = atoi(str[4]);
-	vending = atoi(str[5]);
+	sell = atoi(str[5]);
 	mail = atoi(str[6]);
 	auction = atoi(str[7]);
 	bindonequip = atoi(str[8]);
@@ -1200,7 +1200,7 @@ static bool ItemMoveInfo(char *str[], int columns, int current)
 	id->item_bound.trade = trade;
 	id->item_bound.storage = storage;
 	id->item_bound.cart = cart;
-	id->item_bound.vending = vending;
+	id->item_bound.vending = sell;
 	id->item_bound.mail = mail;
 	id->item_bound.auction = auction;
 	id->flag.bindonequip = bindonequip;
@@ -1351,10 +1351,9 @@ int itemdb_combo_split_atoi(char *str, int *val)
 /**
  * <combo{:combo{:combo:{..}}}>,<{ script }>
  **/
-void itemdb_read_combos()
-{
-	int items[MAX_ITEMS_PER_COMBO], v = 0, retcount = 0, idx = 0, rows = 0, i;
-	struct item_data *id = NULL;
+void itemdb_read_combos() {
+	int items[MAX_ITEMS_PER_COMBO], v = 0, retcount = 0, rows = 0, i;
+	struct item_combo *combo = NULL;
 
 	if(SQL_ERROR == Sql_Query(dbmysql_handle, "SELECT * FROM `%s`", get_database_name(38))) {
 		Sql_ShowDebug(dbmysql_handle);
@@ -1365,7 +1364,7 @@ void itemdb_read_combos()
 		char *row[2];
 
 		for(i = 0; i < 2; ++i)
-			Sql_GetData(dbmysql_handle, i, &row[i], NULL);
+		Sql_GetData(dbmysql_handle, i, &row[i], NULL);
 
 		if((retcount = itemdb_combo_split_atoi(row[0], items)) < 2) {
 			ShowError("itemdb_read_combos: Não tem elementos suficientes (min:2).\n");
@@ -1380,47 +1379,32 @@ void itemdb_read_combos()
 		}
 
 		if(v < retcount)
-			continue;
+		continue;
 
-		id = itemdb_exists(items[0]);
+		RECREATE(itemdb->combos, struct item_combo *, ++itemdb->combo_count);
 
-		idx = id->combos_count;
+		CREATE(combo, struct item_combo, 1);
 
-		if(id->combos == NULL) {
-			CREATE(id->combos, struct item_combo *, 1);
-			id->combos_count = 1;
-		} else {
-			RECREATE(id->combos, struct item_combo *, ++id->combos_count);
+		combo->count = retcount;
+		combo->script = script->parse(row[1], "item_combo_db", rows, 0);
+		combo->id = itemdb->combo_count - 1;
+
+		for(v = 0; v < retcount; v++) {
+			combo->nameid[v] = items[v];
 		}
 
-		CREATE(id->combos[idx],struct item_combo,1);
+		itemdb->combos[itemdb->combo_count - 1] = combo;
 
-		id->combos[idx]->nameid = aMalloc(retcount * sizeof(unsigned short));
-		id->combos[idx]->count = retcount;
-		id->combos[idx]->script = script->parse(row[1], "item_combo_db", rows, 0);
-		id->combos[idx]->id = rows;
-		id->combos[idx]->isRef = false;
-
-		for(v = 0; v < retcount; v++)
-			id->combos[idx]->nameid[v] = items[v];
-
-		for(v = 1; v < retcount; v++) {
+		for(v = 0; v < retcount; v++) {
 			struct item_data *it;
 			int index;
 
 			it = itemdb_exists(items[v]);
 			index = it->combos_count;
 
-			if(it->combos == NULL) {
-				CREATE(it->combos, struct item_combo *, 1);
-				it->combos_count = 1;
-			} else {
-				RECREATE(it->combos, struct item_combo *, ++it->combos_count);
-			}
+			RECREATE(it->combos, struct item_combo *, ++it->combos_count);
 
-			CREATE(it->combos[index],struct item_combo,1);
-			memcpy(it->combos[index],id->combos[idx],sizeof(struct item_combo));
-			it->combos[index]->isRef = true;
+			it->combos[index] = combo;
 		}
 
 		rows++;
@@ -1722,6 +1706,15 @@ static void itemdb_read(void)
 	itemdb_uid_load();
 }
 
+/**
+ * retrieves item_combo data by combo id
+ **/
+struct item_combo * itemdb_id2combo( unsigned short id ) {
+	if(id > itemdb->combo_count)
+		return NULL;
+	return itemdb->combos[id];
+}
+
 /*==========================================
  * Initialize / Finalize
  *------------------------------------------*/
@@ -1738,17 +1731,8 @@ static void destroy_item_data(struct item_data *self, int free_self)
 		script->free_code(self->equip_script);
 	if(self->unequip_script)
 		script->free_code(self->unequip_script);
-	if(self->combos_count) {
-		int i;
-		for(i = 0; i < self->combos_count; i++) {
-			if(!self->combos[i]->isRef) {
-				aFree(self->combos[i]->nameid);
-				script->free_code(self->combos[i]->script);
-			}
-			aFree(self->combos[i]);
-		}
+	if(self->combos)
 		aFree(self->combos);
-	}
 #if defined(DEBUG)
 	// trash item
 	memset(self, 0xDD, sizeof(struct item_data));
@@ -1770,15 +1754,10 @@ static int itemdb_final_sub(DBKey key, DBData *data, va_list ap)
 
 	return 0;
 }
+void itemdb_clear(bool total) {
 
-void itemdb_reload(void)
-{
-	struct s_mapiterator *iter;
-	struct map_session_data *sd;
+	int i;
 
-	int i,d,k;
-
-	// clear the previous itemdb data
 	for(i = 0; i < ARRAYLENGTH(itemdb_array); ++i)
 		if(itemdb_array[i])
 			destroy_item_data(itemdb_array[i], 1);
@@ -1799,14 +1778,36 @@ void itemdb_reload(void)
 	itemdb->packages = NULL;
 	itemdb->package_count = 0;
 
+	for(i = 0; i < itemdb->combo_count; i++) {
+		script->free_code(itemdb->combos[i]->script);
+		aFree(itemdb->combos[i]);
+	}
+	if(itemdb->combos)
+		aFree(itemdb->combos);
+
+	itemdb->combos = NULL;
+	itemdb->combo_count = 0;
+
+	if(total)
+		return;
+
 	itemdb_other->clear(itemdb_other, itemdb_final_sub);
 
 	memset(itemdb_array, 0, sizeof(itemdb_array));
 
 	db_clear(itemdb->names);
 
+}
+void itemdb_reload(void) {
+	struct s_mapiterator* iter;
+	struct map_session_data* sd;
+
+	int i,d,k;
+
+	itemdb->clear(false);
+
 	// read new data
-	itemdb_read();
+	itemdb->read();
 
 	//Epoque's awesome @reloaditemdb fix - thanks! [Ind]
 	//- Fixes the need of a @reloadmobdb after a @reloaditemdb to re-link monster drop data
@@ -1814,7 +1815,7 @@ void itemdb_reload(void)
 		struct mob_db *entry;
 		if(!((i < 1324 || i > 1363) && (i < 1938 || i > 1946)))
 			continue;
-		entry = mob_db(i);
+		entry = mob->db(i);
 		for(d = 0; d < MAX_MOB_DROP; d++) {
 			struct item_data *id;
 			if(!entry->dropitem[d].nameid)
@@ -1843,18 +1844,15 @@ void itemdb_reload(void)
 		pc_setinventorydata(sd);
 		if(battle_config.item_check)
 			sd->state.itemcheck = 1;
-		pc_checkitem(sd);
 		/* clear combo bonuses */
-		if(sd->combos.count) {
-			aFree(sd->combos.bonus);
-			aFree(sd->combos.id);
-			sd->combos.bonus = NULL;
-			sd->combos.id = NULL;
-			sd->combos.count = 0;
+		if(sd->combo_count) {
+			aFree(sd->combos);
+			sd->combos = NULL;
+			sd->combo_count = 0;
 			if(pc_load_combo(sd) > 0)
 				status_calc_pc(sd,SCO_FORCE);
 		}
-
+		pc_checkitem(sd);
 	}
 	mapit_free(iter);
 }
@@ -1868,24 +1866,7 @@ void itemdb_name_constants(void) {
 	dbi_destroy(iter);	
 }
 void do_final_itemdb(void) {
-	int i;
-
-	for(i = 0; i < ARRAYLENGTH(itemdb_array); ++i)
-		if(itemdb_array[i])
-			destroy_item_data(itemdb_array[i], 1);
-
-	for(i = 0; i < itemdb->package_count; i++) {
-		int c;
-		for(c = 0; c < itemdb->packages[i].random_qty; c++)
-			aFree(itemdb->packages[i].random_groups[c].random_list);
-		if(itemdb->packages[i].random_groups)
-			aFree(itemdb->packages[i].random_groups);
-		if(itemdb->packages[i].must_items)
-			aFree(itemdb->packages[i].must_items);
-	}
-
-	if(itemdb->packages)
-		aFree(itemdb->packages);
+	itemdb->clear(true);
 
 	itemdb_other->destroy(itemdb_other, itemdb_final_sub);
 	destroy_item_data(&dummy_item, 0);
@@ -1898,7 +1879,7 @@ void do_init_itemdb(void)
 	itemdb_other = idb_alloc(DB_OPT_BASE);
 	itemdb->names = strdb_alloc(DB_OPT_BASE,ITEM_NAME_LENGTH);
 	create_dummy_data(); //Dummy data item.
-	itemdb_read();
+	itemdb->read();
 	clif_cashshop_db();
 
 }
@@ -1911,6 +1892,9 @@ void itemdb_defaults(void) {
 	itemdb->packages = NULL;
 	itemdb->package_count = 0;
 	/* */
+	itemdb->combos = NULL;
+	itemdb->combo_count = 0;
+	/* */
 	itemdb->names = NULL;
 	/* */
 	itemdb->read_packages = itemdb_read_packages;
@@ -1920,4 +1904,7 @@ void itemdb_defaults(void) {
 	/* */
 	itemdb->name2id = itemdb_name2id;
 	itemdb->package_item = itemdb_package_item;
+	itemdb->read = itemdb_read;
+	itemdb->clear = itemdb_clear;
+	itemdb->id2combo = itemdb_id2combo;
 }

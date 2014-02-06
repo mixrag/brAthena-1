@@ -70,8 +70,6 @@
 #include <unistd.h>
 #endif
 
-char default_codepage[32] = "";
-
 int map_server_port = 3306;
 char map_server_ip[32] = "127.0.0.1";
 char map_server_id[32] = "ragnarok";
@@ -3302,7 +3300,7 @@ int parse_console(const char *buf)
 	ShowNotice("Type of command: '%s' || Command: '%s' || Map: '%s' Coords: %d %d\n", type, command, map_name, x, y);
 
 	if(n == 5 && strcmpi("admin",type) == 0) {
-		if (!atcommand_exec(sd.fd, &sd, command, false))
+		if (!atcommand->exec(sd.fd, &sd, command, false))
 			ShowInfo("Console: not atcommand\n");
 	} else if(n == 2 && strcmpi("server", type) == 0) {
 		if(strcmpi("shutdown", command) == 0 || strcmpi("exit", command) == 0 || strcmpi("quit", command) == 0) {
@@ -3555,13 +3553,13 @@ int inter_config_read(char *cfgName)
 		else if(strcmpi(w1,"log_db_ip")==0)
 			strcpy(log_db_ip, w2);
 		else if(strcmpi(w1,"log_db_id")==0)
-			strcpy(log_db_id, w2);
+			strcpy(logs->db_id, w2);
 		else if(strcmpi(w1,"log_db_pw")==0)
-			strcpy(log_db_pw, w2);
+			strcpy(logs->db_pw, w2);
 		else if(strcmpi(w1,"log_db_port")==0)
-			log_db_port = atoi(w2);
+			logs->db_port = atoi(w2);
 		else if(strcmpi(w1,"log_db_db")==0)
-			strcpy(log_db_db, w2);
+			strcpy(logs->db_name, w2);
 		else if(!strcmpi(w1,"db_ip"))
 			strncpy(db_ip, w2, sizeof(db_ip));
 		else if(!strcmpi(w1,"db_id"))
@@ -3749,31 +3747,10 @@ int map_sql_close(void)
 	mmysql_handle = NULL;
 	Sql_Free(dbmysql_handle);
 	dbmysql_handle = NULL;
-#ifndef BETA_THREAD_TEST
-	if(log_config.sql_logs) {
-		ShowStatus("Fechada conex%co com banco de dados de logs....\n", 198);
-		Sql_Free(logmysql_handle);
-		logmysql_handle = NULL;
+
+	if(logs->config.sql_logs) {
+		logs->sql_final();
 	}
-#endif
-	return 0;
-}
-
-int log_sql_init(void)
-{
-#ifndef BETA_THREAD_TEST
-	// log db connection
-	logmysql_handle = Sql_Malloc();
-
-	ShowInfo("Conectando com o banco de dados de logs "CL_WHITE"%s"CL_RESET" em "CL_WHITE"%s"CL_RESET"...\n",log_db_db,log_db_ip);
-	if(SQL_ERROR == Sql_Connect(logmysql_handle, log_db_id, log_db_pw, log_db_ip, log_db_port, log_db_db))
-		exit(EXIT_FAILURE);
-	ShowStatus("Conex%co efetuada com sucesso no banco de dados '"CL_WHITE"%s"CL_RESET"'.\n", 198, log_db_db);
-
-	if(strlen(default_codepage) > 0)
-	if(SQL_ERROR == Sql_SetEncoding(logmysql_handle, default_codepage))
-			Sql_ShowDebug(logmysql_handle);
-#endif
 	return 0;
 }
 
@@ -3790,13 +3767,114 @@ int db_sql_init(void)
 	return 0;
 }
 
+/**
+ * Merges two zones into a new one
+ * @param main the zone whose data must override the others upon conflict,
+ *        e.g. enabling pvp on a town means that main is the pvp zone, while "other" is the towns previous zone
+ *
+ * @return the newly created zone from merging main and other
+ **/
+struct map_zone_data *map_merge_zone(struct map_zone_data *main, struct map_zone_data *other) {
+	char newzone[MAP_ZONE_NAME_LENGTH];
+	struct map_zone_data *zone = NULL;
+	int cursor, i;
+
+	sprintf(newzone, "%s+%s",main->name,other->name);
+
+	if((zone = strdb_get(zone_db, newzone)))
+		return zone;/* this zone has already been merged */
+
+	CREATE(zone, struct map_zone_data, 1);
+
+	safestrncpy(zone->name, newzone, MAP_ZONE_NAME_LENGTH);
+
+	zone->disabled_skills_count = main->disabled_skills_count + other->disabled_skills_count;
+	zone->disabled_items_count = main->disabled_items_count + other->disabled_items_count;
+	zone->mapflags_count = main->mapflags_count + other->mapflags_count;
+	zone->disabled_commands_count = main->disabled_commands_count + other->disabled_commands_count;
+	zone->capped_skills_count = main->capped_skills_count + other->capped_skills_count;
+
+	CREATE(zone->disabled_skills, struct map_zone_disabled_skill_entry *, zone->disabled_skills_count );
+
+	for(i = 0, cursor = 0; i < main->disabled_skills_count; i++, cursor++ ) {
+		CREATE(zone->disabled_skills[cursor], struct map_zone_disabled_skill_entry, 1 );
+		memcpy(zone->disabled_skills[cursor], main->disabled_skills[i], sizeof(struct map_zone_disabled_skill_entry));
+	}
+
+	for(i = 0; i < other->disabled_skills_count; i++, cursor++ ) {
+		CREATE(zone->disabled_skills[cursor], struct map_zone_disabled_skill_entry, 1 );
+		memcpy(zone->disabled_skills[cursor], other->disabled_skills[i], sizeof(struct map_zone_disabled_skill_entry));
+	}
+
+	CREATE(zone->disabled_items, int, zone->disabled_items_count );
+
+	for(i = 0, cursor = 0; i < main->disabled_items_count; i++, cursor++ ) {
+		zone->disabled_items[cursor] = main->disabled_items[i];
+	}
+
+	for(i = 0; i < other->disabled_items_count; i++, cursor++ ) {
+		zone->disabled_items[cursor] = other->disabled_items[i];
+	}
+
+	CREATE(zone->mapflags, char *, zone->mapflags_count );
+
+	for(i = 0, cursor = 0; i < main->mapflags_count; i++, cursor++ ) {
+		CREATE(zone->mapflags[cursor], char, MAP_ZONE_MAPFLAG_LENGTH );
+		safestrncpy(zone->mapflags[cursor], main->mapflags[i], MAP_ZONE_MAPFLAG_LENGTH);
+	}
+
+	for(i = 0; i < other->mapflags_count; i++, cursor++ ) {
+		CREATE(zone->mapflags[cursor], char, MAP_ZONE_MAPFLAG_LENGTH );
+		safestrncpy(zone->mapflags[cursor], other->mapflags[i], MAP_ZONE_MAPFLAG_LENGTH);
+	}
+
+	CREATE(zone->disabled_commands, struct map_zone_disabled_command_entry *, zone->disabled_commands_count);
+
+	for(i = 0, cursor = 0; i < main->disabled_commands_count; i++, cursor++ ) {
+		CREATE(zone->disabled_commands[cursor], struct map_zone_disabled_command_entry, 1);
+		memcpy(zone->disabled_commands[cursor], main->disabled_commands[i], sizeof(struct map_zone_disabled_command_entry));
+	}
+
+	for(i = 0; i < other->disabled_commands_count; i++, cursor++ ) {
+		CREATE(zone->disabled_commands[cursor], struct map_zone_disabled_command_entry, 1);
+		memcpy(zone->disabled_commands[cursor], other->disabled_commands[i], sizeof(struct map_zone_disabled_command_entry));
+	}
+
+	CREATE(zone->capped_skills, struct map_zone_skill_damage_cap_entry *, zone->capped_skills_count);
+
+
+	for(i = 0, cursor = 0; i < main->capped_skills_count; i++, cursor++ ) {
+		CREATE(zone->capped_skills[cursor], struct map_zone_skill_damage_cap_entry, 1);
+		memcpy(zone->capped_skills[cursor], main->disabled_commands[i], sizeof(struct map_zone_skill_damage_cap_entry));
+	}
+	
+	for(i = 0; i < other->capped_skills_count; i++, cursor++ ) {
+		CREATE(zone->capped_skills[cursor], struct map_zone_skill_damage_cap_entry, 1);
+		memcpy(zone->capped_skills[cursor], other->capped_skills[i], sizeof(struct map_zone_skill_damage_cap_entry));
+	}
+
+	zone->info.special = 2;
+
+	strdb_put(zone_db, newzone, zone);
+
+	return zone;
+}
+
 void map_zone_change2(int m, struct map_zone_data *zone) {
 	char empty[1] = "\0";
 
-	map[m].prev_zone = map[m].zone;
+	if(map[m].zone == zone)
+		return;
+
+	if(map[m].zone->info.special != 2) /* we don't update it for merged zones! */
+		map[m].prev_zone = map[m].zone;
 
 	if(map[m].zone_mf_count)
 		map_zone_remove(m);
+
+	if(zone->info.special) {
+		zone = map_merge_zone(zone,map[m].prev_zone);
+	}
 
 	map_zone_apply(m,zone,empty,empty,empty);
 }
@@ -4714,7 +4792,7 @@ void read_map_zone_db(void) {
 	if (libconfig->read_file(&map_zone_db, config_filename))
 		return;
 
-	zones = config_lookup(&map_zone_db, "zones");
+	zones = libconfig->lookup(&map_zone_db, "zones");
 
 	if (zones != NULL) {
 		struct map_zone_data *zone;
@@ -4731,16 +4809,16 @@ void read_map_zone_db(void) {
 			disabled_commands_count = 0, capped_skills_count = 0;
 		enum map_zone_skill_subtype subtype;
 		
-		zone_count = config_setting_length(zones);
+		zone_count = libconfig->setting_length(zones);
 		for (i = 0; i < zone_count; ++i) {
 			bool is_all = false;
 			
-			zone_e = config_setting_get_elem(zones, i);
+			zone_e = libconfig->setting_get_elem(zones, i);
 			
-			if (!config_setting_lookup_string(zone_e, "name", &zonename)) {
+			if (!libconfig->setting_lookup_string(zone_e, "name", &zonename)) {
 				ShowError("map_zone_db: faltando nome de zona, ignorando... (%s:%d)\n",
 						  config_setting_source_file(zone_e), config_setting_source_line(zone_e));
-				config_setting_remove_elem(zones,i);/* remove from the tree */
+				libconfig->setting_remove_elem(zones,i);/* remove from the tree */
 				--zone_count;
 				--i;
 				continue;
@@ -4748,7 +4826,7 @@ void read_map_zone_db(void) {
 			
 			if(strdb_exists(zone_db, zonename)) {
 				ShowError("map_zone_db: nome duplicado de zona '%s', ignorando...\n",zonename);
-				config_setting_remove_elem(zones,i);/* remove from the tree */
+				libconfig->setting_remove_elem(zones,i);/* remove from the tree */
 				--zone_count;
 				--i;
 				continue;
@@ -4766,33 +4844,33 @@ void read_map_zone_db(void) {
 				zone->disabled_skills_count = 0;
 				zone->disabled_items_count  = 0;
 			}
-			safestrncpy(zone->name, zonename, MAP_ZONE_NAME_LENGTH);
+			safestrncpy(zone->name, zonename, MAP_ZONE_NAME_LENGTH/2);
 			
-			if((skills = config_setting_get_member(zone_e, "disabled_skills")) != NULL) {
-				disabled_skills_count = config_setting_length(skills);
+			if((skills = libconfig->setting_get_member(zone_e, "disabled_skills")) != NULL) {
+				disabled_skills_count = libconfig->setting_length(skills);
 				/* validate */
-				for(h = 0; h < config_setting_length(skills); h++) {
-					config_setting_t *skill = config_setting_get_elem(skills, h);
-					name = config_setting_name(skill);
+				for(h = 0; h < libconfig->setting_length(skills); h++) {
+					config_setting_t *skillinfo = libconfig->setting_get_elem(skills, h);
+					name = config_setting_name(skillinfo);
 					if(!map_zone_str2skillid(name)) {
 						ShowError("map_zone_db: habilidade desconhecida (%s) em disabled_skills  para a zona '%s', ignorando habilidade...\n",name,zone->name);
-						config_setting_remove_elem(skills,h);
+						libconfig->setting_remove_elem(skills,h);
 						--disabled_skills_count;
 						--h;
 						continue;
 					}
-					if(!map_zone_bl_type(config_setting_get_string_elem(skills,h),&subtype))/* we dont remove it from the three due to inheritance */
+					if(!map_zone_bl_type(libconfig->setting_get_string_elem(skills,h),&subtype))/* we dont remove it from the three due to inheritance */
 						--disabled_skills_count;
 				}
 				/* all ok, process */
 				CREATE(zone->disabled_skills, struct map_zone_disabled_skill_entry *, disabled_skills_count);
-				for(h = 0, v = 0; h < config_setting_length(skills); h++) {
-					config_setting_t *skill = config_setting_get_elem(skills, h);
+				for(h = 0, v = 0; h < libconfig->setting_length(skills); h++) {
+					config_setting_t *skillinfo = libconfig->setting_get_elem(skills, h);
 					struct map_zone_disabled_skill_entry * entry;
 					enum bl_type type;
-					name = config_setting_name(skill);
+					name = config_setting_name(skillinfo);
 					
-					if((type = map_zone_bl_type(config_setting_get_string_elem(skills,h),&subtype))) { /* only add if enabled */
+					if((type = map_zone_bl_type(libconfig->setting_get_string_elem(skills,h),&subtype))) { /* only add if enabled */
 						CREATE( entry, struct map_zone_disabled_skill_entry, 1);
 						
 						entry->nameid = map_zone_str2skillid(name);
@@ -4806,28 +4884,28 @@ void read_map_zone_db(void) {
 				zone->disabled_skills_count = disabled_skills_count;
 			}
 			
-			if((items = config_setting_get_member(zone_e, "disabled_items")) != NULL) {
-				disabled_items_count = config_setting_length(items);
+			if((items = libconfig->setting_get_member(zone_e, "disabled_items")) != NULL) {
+				disabled_items_count = libconfig->setting_length(items);
 				/* validate */
-				for(h = 0; h < config_setting_length(items); h++) {
-					config_setting_t *item = config_setting_get_elem(items, h);
+				for(h = 0; h < libconfig->setting_length(items); h++) {
+					config_setting_t *item = libconfig->setting_get_elem(items, h);
 					name = config_setting_name(item);
 					if(!map_zone_str2itemid(name)) {
 						ShowError("map_zone_db: item desconhecido (%s) em disabled_items para a zona '%s', ignorando o item...\n",name,zone->name);
-						config_setting_remove_elem(items,h);
+						libconfig->setting_remove_elem(items,h);
 						--disabled_items_count;
 						--h;
 						continue;
 					}
-					if(!config_setting_get_bool(item))/* we dont remove it from the three due to inheritance */
+					if(!libconfig->setting_get_bool(item))/* we dont remove it from the three due to inheritance */
 						--disabled_items_count;
 				}
 				/* all ok, process */
 				CREATE(zone->disabled_items, int, disabled_items_count);
-				for(h = 0, v = 0; h < config_setting_length(items); h++) {
-					config_setting_t *item = config_setting_get_elem(items, h);
+				for(h = 0, v = 0; h < libconfig->setting_length(items); h++) {
+					config_setting_t *item = libconfig->setting_get_elem(items, h);
 					
-					if(config_setting_get_bool(item)) { /* only add if enabled */
+					if(libconfig->setting_get_bool(item)) { /* only add if enabled */
 						name = config_setting_name(item);
 						zone->disabled_items[v++] = map_zone_str2itemid(name);
 					}
@@ -4836,14 +4914,14 @@ void read_map_zone_db(void) {
 				zone->disabled_items_count = disabled_items_count;
 			}
 			
-			if((mapflags = config_setting_get_member(zone_e, "mapflags")) != NULL) {
-				mapflags_count = config_setting_length(mapflags);
+			if((mapflags = libconfig->setting_get_member(zone_e, "mapflags")) != NULL) {
+				mapflags_count = libconfig->setting_length(mapflags);
 				/* mapflags are not validated here, so we save all anyway */
 				CREATE(zone->mapflags, char *, mapflags_count);
 				for(h = 0; h < mapflags_count; h++) {
 					CREATE(zone->mapflags[h], char, MAP_ZONE_MAPFLAG_LENGTH);
 					
-					name = config_setting_get_string_elem(mapflags, h);
+					name = libconfig->setting_get_string_elem(mapflags, h);
 					
 					safestrncpy(zone->mapflags[h], name, MAP_ZONE_MAPFLAG_LENGTH);
 					
@@ -4851,34 +4929,34 @@ void read_map_zone_db(void) {
 				zone->mapflags_count = mapflags_count;
 			}
 			
-			if((commands = config_setting_get_member(zone_e, "disabled_commands")) != NULL) {
-				disabled_commands_count = config_setting_length(commands);
+			if((commands = libconfig->setting_get_member(zone_e, "disabled_commands")) != NULL) {
+				disabled_commands_count = libconfig->setting_length(commands);
 				/* validate */
-				for(h = 0; h < config_setting_length(commands); h++) {
-					config_setting_t *command = config_setting_get_elem(commands, h);
+				for(h = 0; h < libconfig->setting_length(commands); h++) {
+					config_setting_t *command = libconfig->setting_get_elem(commands, h);
 					name = config_setting_name(command);
-					if(!atcommand_exists(name)) {
+					if (!atcommand->exists(name)) {
 						ShowError("map_zone_db: comando desconhecido '%s' em disabled_commands para a zona '%s', Ignorando entrada...\n",name,zone->name);
-						config_setting_remove_elem(commands,h);
+						libconfig->setting_remove_elem(commands,h);
 						--disabled_commands_count;
 						--h;
 						continue;
 					}
-					if(!config_setting_get_int(command))/* we dont remove it from the three due to inheritance */
+					if(!libconfig->setting_get_int(command))/* we dont remove it from the three due to inheritance */
 						--disabled_commands_count;
 				}
 				/* all ok, process */
 				CREATE(zone->disabled_commands, struct map_zone_disabled_command_entry *, disabled_commands_count);
-				for(h = 0, v = 0; h < config_setting_length(commands); h++) {
-					config_setting_t *command = config_setting_get_elem(commands, h);
+				for(h = 0, v = 0; h < libconfig->setting_length(commands); h++) {
+					config_setting_t *command = libconfig->setting_get_elem(commands, h);
 					struct map_zone_disabled_command_entry * entry;
 					int group_lv;
 					name = config_setting_name(command);
 
-					if((group_lv = config_setting_get_int(command))) { /* only add if enabled */
+					if((group_lv = libconfig->setting_get_int(command))) { /* only add if enabled */
 						CREATE( entry, struct map_zone_disabled_command_entry, 1 );
 
-						entry->cmd  = get_atcommandinfo_byname(name)->func;
+						entry->cmd = atcommand->get_info_byname(name)->func;
 						entry->group_lv = group_lv;
 
 						zone->disabled_commands[v++] = entry;
@@ -4887,35 +4965,35 @@ void read_map_zone_db(void) {
 				zone->disabled_commands_count = disabled_commands_count;
 			}
 			
-			if( (caps = config_setting_get_member(zone_e, "skill_damage_cap")) != NULL ) {
-				capped_skills_count = config_setting_length(caps);
+			if( (caps = libconfig->setting_get_member(zone_e, "skill_damage_cap")) != NULL ) {
+				capped_skills_count = libconfig->setting_length(caps);
 				/* validate */
-				for(h = 0; h < config_setting_length(caps); h++) {
-					config_setting_t *cap = config_setting_get_elem(caps, h);
+				for(h = 0; h < libconfig->setting_length(caps); h++) {
+					config_setting_t *cap = libconfig->setting_get_elem(caps, h);
 					name = config_setting_name(cap);
 					if( !map_zone_str2skillid(name) ) {
 						ShowError("map_zone_db: habilidade desconhecida (%s) em skill_damage_cap para a zona '%s', Ignorando habilidade...\n",name,zone->name);
-						config_setting_remove_elem(caps,h);
+						libconfig->setting_remove_elem(caps,h);
 						--capped_skills_count;
 						--h;
 						continue;
 					}
-					if( !map_zone_bl_type(config_setting_get_string_elem(cap,1),&subtype) )/* we dont remove it from the three due to inheritance */
+					if( !map_zone_bl_type(libconfig->setting_get_string_elem(cap,1),&subtype) )/* we dont remove it from the three due to inheritance */
 						--capped_skills_count;
 				}
 				/* all ok, process */
 				CREATE( zone->capped_skills, struct map_zone_skill_damage_cap_entry *, capped_skills_count );
-				for(h = 0, v = 0; h < config_setting_length(caps); h++) {
-					config_setting_t *cap = config_setting_get_elem(caps, h);
+				for(h = 0, v = 0; h < libconfig->setting_length(caps); h++) {
+					config_setting_t *cap = libconfig->setting_get_elem(caps, h);
 					struct map_zone_skill_damage_cap_entry * entry;
 					enum bl_type type;
 					name = config_setting_name(cap);
 
-					if( (type = map_zone_bl_type(config_setting_get_string_elem(cap,1),&subtype)) ) { /* only add if enabled */
+					if( (type = map_zone_bl_type(libconfig->setting_get_string_elem(cap,1),&subtype)) ) { /* only add if enabled */
 						CREATE( entry, struct map_zone_skill_damage_cap_entry, 1 );
 
 						entry->nameid = map_zone_str2skillid(name);
-						entry->cap = config_setting_get_int_elem(cap,0);
+						entry->cap = libconfig->setting_get_int_elem(cap,0);
 						entry->type = type;
 						entry->subtype = subtype;
 						zone->capped_skills[v++] = entry;
@@ -4935,24 +5013,24 @@ void read_map_zone_db(void) {
 			config_setting_t *new_entry = NULL;
 			int inherit_count;
 			
-			zone_e = config_setting_get_elem(zones, i);
-			config_setting_lookup_string(zone_e, "name", &zonename);
+			zone_e = libconfig->setting_get_elem(zones, i);
+			libconfig->setting_lookup_string(zone_e, "name", &zonename);
 
 			if(strncmpi(zonename,MAP_ZONE_ALL_NAME,MAP_ZONE_NAME_LENGTH) == 0) {
 				continue;/* all zone doesn't inherit anything (if it did, everything would link to each other and boom endless loop) */
 			}
 			
-			if((inherit_tree = config_setting_get_member(zone_e, "inherit")) != NULL) {
+			if((inherit_tree = libconfig->setting_get_member(zone_e, "inherit")) != NULL) {
 				/* append global zone to this */
-				new_entry = config_setting_add(inherit_tree,MAP_ZONE_ALL_NAME,CONFIG_TYPE_STRING);
-				config_setting_set_string(new_entry,MAP_ZONE_ALL_NAME);
+				new_entry = libconfig->setting_add(inherit_tree,MAP_ZONE_ALL_NAME,CONFIG_TYPE_STRING);
+				libconfig->setting_set_string(new_entry,MAP_ZONE_ALL_NAME);
 			} else {
 				/* create inherit member and add global zone to it */
-				inherit_tree = config_setting_add(zone_e, "inherit",CONFIG_TYPE_ARRAY);
-				new_entry = config_setting_add(inherit_tree,MAP_ZONE_ALL_NAME,CONFIG_TYPE_STRING);
-				config_setting_set_string(new_entry,MAP_ZONE_ALL_NAME);
+				inherit_tree = libconfig->setting_add(zone_e, "inherit",CONFIG_TYPE_ARRAY);
+				new_entry = libconfig->setting_add(inherit_tree,MAP_ZONE_ALL_NAME,CONFIG_TYPE_STRING);
+				libconfig->setting_set_string(new_entry,MAP_ZONE_ALL_NAME);
 			}
-				inherit_count = config_setting_length(inherit_tree);
+				inherit_count = libconfig->setting_length(inherit_tree);
 				for(h = 0; h < inherit_count; h++) {
 					struct map_zone_data *izone; /* inherit zone */
 					int disabled_skills_count_i = 0; /* disabled skill count from inherit zone */
@@ -4962,8 +5040,8 @@ void read_map_zone_db(void) {
 					int capped_skills_count_i = 0; /* skill capped count from inherit zone */
 					int j;
 					
-					name = config_setting_get_string_elem(inherit_tree, h);
-					config_setting_lookup_string(zone_e, "name", &zonename);/* will succeed for we validated it earlier */
+					name = libconfig->setting_get_string_elem(inherit_tree, h);
+					libconfig->setting_lookup_string(zone_e, "name", &zonename);/* will succeed for we validated it earlier */
 					
 					if(!(izone = strdb_get(zone_db, name))) {
 						ShowError("map_zone_db: Unknown zone '%s' being inherit by zone '%s', skipping...\n",name,zonename);
@@ -4985,14 +5063,14 @@ void read_map_zone_db(void) {
 					
 					/* process everything to override, paying attention to config_setting_get_bool */
 					if( disabled_skills_count_i ) {
-					if((skills = config_setting_get_member(zone_e, "disabled_skills")) == NULL)
-						skills = config_setting_add(zone_e, "disabled_skills",CONFIG_TYPE_GROUP);
-						disabled_skills_count = config_setting_length(skills);
+					if((skills = libconfig->setting_get_member(zone_e, "disabled_skills")) == NULL)
+						skills = libconfig->setting_add(zone_e, "disabled_skills",CONFIG_TYPE_GROUP);
+						disabled_skills_count = libconfig->setting_length(skills);
 						for(j = 0; j < disabled_skills_count_i; j++) {
 							int k;
 							for(k = 0; k < disabled_skills_count; k++) {
-								config_setting_t *skill = config_setting_get_elem(skills, k);
-								if(map_zone_str2skillid(config_setting_name(skill)) == izone->disabled_skills[j]->nameid) {
+								config_setting_t *skillinfo = libconfig->setting_get_elem(skills, k);
+								if(map_zone_str2skillid(config_setting_name(skillinfo)) == izone->disabled_skills[j]->nameid) {
 									break;
 								}
 							}
@@ -5008,18 +5086,18 @@ void read_map_zone_db(void) {
 					}
 					
 					if(disabled_items_count_i) {
-					if((items = config_setting_get_member(zone_e, "disabled_items")) == NULL)
-						items = config_setting_add(zone_e, "disabled_items",CONFIG_TYPE_GROUP);
-						disabled_items_count = config_setting_length(items);
+					if((items = libconfig->setting_get_member(zone_e, "disabled_items")) == NULL)
+						items = libconfig->setting_add(zone_e, "disabled_items",CONFIG_TYPE_GROUP);
+						disabled_items_count = libconfig->setting_length(items);
 						for(j = 0; j < disabled_items_count_i; j++) {
 							int k;
 							for(k = 0; k < disabled_items_count; k++) {
-								config_setting_t *item = config_setting_get_elem(items, k);
+								config_setting_t *item = libconfig->setting_get_elem(items, k);
 								
 								name = config_setting_name(item);
 								
 								if( map_zone_str2itemid(name) == izone->disabled_items[j]) {
-									if( config_setting_get_bool(item) )
+									if(libconfig->setting_get_bool(item))
 										continue;
 									break;
 								}
@@ -5032,13 +5110,13 @@ void read_map_zone_db(void) {
 					}
 
 					if(mapflags_count_i) {
-					if((mapflags = config_setting_get_member(zone_e, "mapflags")) == NULL)
-						mapflags = config_setting_add(zone_e, "mapflags",CONFIG_TYPE_ARRAY);
-						mapflags_count = config_setting_length(mapflags);
+					if((mapflags = libconfig->setting_get_member(zone_e, "mapflags")) == NULL)
+						mapflags = libconfig->setting_add(zone_e, "mapflags",CONFIG_TYPE_ARRAY);
+						mapflags_count = libconfig->setting_length(mapflags);
 						for(j = 0; j < mapflags_count_i; j++) {
 							int k;
 							for(k = 0; k < mapflags_count; k++) {
-								name = config_setting_get_string_elem(mapflags, k);
+								name = libconfig->setting_get_string_elem(mapflags, k);
 								
 								if(strcmpi(name,izone->mapflags[j]) == 0) {
 									break;
@@ -5053,15 +5131,15 @@ void read_map_zone_db(void) {
 					}
 
 					if(disabled_commands_count_i) {
-						if( (commands = config_setting_get_member(zone_e, "disabled_commands")) == NULL )
-							commands = config_setting_add(zone_e, "disabled_commands",CONFIG_TYPE_GROUP);
+						if( (commands = libconfig->setting_get_member(zone_e, "disabled_commands")) == NULL )
+							commands = libconfig->setting_add(zone_e, "disabled_commands",CONFIG_TYPE_GROUP);
 
-						disabled_commands_count = config_setting_length(commands);
+						disabled_commands_count = libconfig->setting_length(commands);
 						for(j = 0; j < disabled_commands_count_i; j++) {
 							int k;
 							for(k = 0; k < disabled_commands_count; k++) {
-								config_setting_t *command = config_setting_get_elem(commands, k);
-								if(get_atcommandinfo_byname(config_setting_name(command))->func == izone->disabled_commands[j]->cmd) {
+								config_setting_t *command = libconfig->setting_get_elem(commands, k);
+								if (atcommand->get_info_byname(config_setting_name(command))->func == izone->disabled_commands[j]->cmd) {
 									break;
 								}
 							}
@@ -5077,14 +5155,14 @@ void read_map_zone_db(void) {
 					}
 
 					if(capped_skills_count_i) {
-						if((caps = config_setting_get_member(zone_e, "skill_damage_cap")) == NULL)
-							caps = config_setting_add(zone_e, "skill_damage_cap",CONFIG_TYPE_GROUP);
+						if((caps = libconfig->setting_get_member(zone_e, "skill_damage_cap")) == NULL)
+							caps = libconfig->setting_add(zone_e, "skill_damage_cap",CONFIG_TYPE_GROUP);
 					
-						capped_skills_count = config_setting_length(caps);
+						capped_skills_count = libconfig->setting_length(caps);
 						for(j = 0; j < capped_skills_count_i; j++) {
 							int k;
 							for(k = 0; k < capped_skills_count; k++) {
-								config_setting_t *cap = config_setting_get_elem(caps, k);
+								config_setting_t *cap = libconfig->setting_get_elem(caps, k);
 								if( map_zone_str2skillid(config_setting_name(cap)) == izone->capped_skills[j]->nameid ) {
 									break;
 								}
@@ -5105,7 +5183,15 @@ void read_map_zone_db(void) {
 		}
 		ShowConf("Leitura de '"CL_WHITE"%d"CL_RESET"' zonas em '"CL_WHITE"%s"CL_RESET"'.\n", zone_count, config_filename);
 		/* not supposed to go in here but in skill_final whatever */
-		config_destroy(&map_zone_db);
+		libconfig->destroy(&map_zone_db);
+
+		/* post-load processing */
+		if((zone = strdb_get(zone_db, MAP_ZONE_PVP_NAME)))
+			zone->info.special = 1;
+		if((zone = strdb_get(zone_db, MAP_ZONE_GVG_NAME)))
+			zone->info.special = 1;
+		if((zone = strdb_get(zone_db, MAP_ZONE_BG_NAME)))
+			zone->info.special = 1;
 	}
 }
 
@@ -5243,7 +5329,7 @@ void do_final(void)
 	chrif_char_reset_offline();
 	chrif_flush_fifo();
 
-	do_final_atcommand();
+	atcommand->final();
 	do_final_battle();
 	do_final_chrif();
 	do_final_clif();
@@ -5257,8 +5343,8 @@ void do_final(void)
 	do_final_party();
 	do_final_pc();
 	do_final_pet();
-	do_final_mob();
-	do_final_msg();
+	mob->final();
+	atcommand->final_msg();
 	do_final_skill();
 	status->final();
 	do_final_unit();
@@ -5479,6 +5565,7 @@ int do_init(int argc, char *argv[])
 	}
 	memset(&index2mapid, -1, sizeof(index2mapid));
 
+	atcommand_defaults();
 	battleground_defaults();
 	clif_defaults();
 	instance_defaults();
@@ -5486,6 +5573,7 @@ int do_init(int argc, char *argv[])
 	gstorage_defaults();
 	homunculus_defaults();
 	itemdb_defaults();
+	log_defaults();
 	pc_groups_defaults();
 	script_defaults();
 	quest_defaults();
@@ -5493,6 +5581,7 @@ int do_init(int argc, char *argv[])
 	storage_defaults();
 	mapindex_defaults();
 	mapreg_defaults();
+	mob_defaults();
 	npc_defaults();
 	vending_defaults();
 #ifdef PCRE_SUPPORT
@@ -5530,11 +5619,11 @@ int do_init(int argc, char *argv[])
 	}
 
 	battle_config_read(BATTLE_CONF_FILENAME);
-	msg_config_read(MSG_CONF_NAME);
+	atcommand->msg_read(MSG_CONF_NAME);
 	//lang_config_read(LANG_FILENAME);
 	script->config_read(SCRIPT_CONF_NAME);
 	inter_config_read(INTER_CONF_NAME);
-	log_config_read(LOG_CONF_NAME);
+	logs->config_read(LOG_CONF_NAME);
 
 
 	script->config_read(SCRIPT_CONF_NAME);
@@ -5558,8 +5647,8 @@ int do_init(int argc, char *argv[])
 	ers_chunk_size(flooritem_ers, 100);
 
 	map_sql_init();
-	if(log_config.sql_logs)
-		log_sql_init();
+	if(logs->config.sql_logs)
+		logs->sql_init();
 
 	db_sql_init();
 
@@ -5575,7 +5664,7 @@ int do_init(int argc, char *argv[])
 	add_timer_func_list(map_removemobs_timer, "map_removemobs_timer");
 	add_timer_interval(gettick()+1000, map_freeblock_timer, 0, 0, 60*1000);
 
-	do_init_atcommand();
+	atcommand->init();
 	do_init_battle();
 	instance->init();
 	do_init_chrif();
@@ -5584,7 +5673,7 @@ int do_init(int argc, char *argv[])
 	do_init_itemdb();
 	do_init_skill();
 	read_map_zone_db();/* read after item and skill initalization */
-	do_init_mob();
+	mob->init();
 	do_init_pc();
 	status->init();
 	do_init_party();

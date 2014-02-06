@@ -788,7 +788,7 @@ void clif_msgtable_num(int fd, int line, int num);
 
 int clif_elementalconverter_list(struct map_session_data *sd);
 
-void clif_millenniumshield(struct map_session_data *sd, short shields);
+void clif_millenniumshield(struct block_list *bl, short shields);
 
 int clif_spellbook_list(struct map_session_data *sd);
 
@@ -1009,7 +1009,8 @@ struct cdelayed_damage {
 //Sistema Indicação de EXP
 void clif_personal_information(struct map_session_data *sd);
 
-//Sistema de canal
+//Sistema de canal,
+DBMap* channel_db;
 struct DBMap* clif_get_channel_db(void);
 void clif_chsys_create(struct raChSysCh *channel, char *name, char *pass, unsigned char color);
 void clif_chsys_msg(struct raChSysCh *channel, struct map_session_data *sd, char *msg);

@@ -1047,7 +1047,7 @@ int guild_send_message(struct map_session_data *sd,const char *mes,int len)
 	guild->recv_message(sd->status.guild_id,sd->status.account_id,mes,len);
 
 	// Chat logging type 'G' / Guild Chat
-	log_chat(LOG_CHAT_GUILD, sd->status.guild_id, sd->status.char_id, sd->status.account_id, mapindex_id2name(sd->mapindex), sd->bl.x, sd->bl.y, NULL, mes);
+	logs->chat(LOG_CHAT_GUILD, sd->status.guild_id, sd->status.char_id, sd->status.account_id, mapindex_id2name(sd->mapindex), sd->bl.x, sd->bl.y, NULL, mes);
 
 	return 0;
 }
@@ -1960,7 +1960,7 @@ int guild_castledatasave(int castle_id, int index, int value)
 				gc->guild_id = value;
 				for(i = 0; i < MAX_GUARDIANS; i++)
 					if(gc->guardian[i].visible && (gd = map_id2md(gc->guardian[i].id)) != NULL)
-						mob_guardian_guildchange(gd);
+						mob->guardian_guildchange(gd);
 				break;
 			}
 		case 2:

@@ -554,7 +554,7 @@ struct map_zone_skill_damage_cap_entry {
 	enum map_zone_skill_subtype subtype;
 };
 
-#define MAP_ZONE_NAME_LENGTH 30
+#define MAP_ZONE_NAME_LENGTH 60
 #define MAP_ZONE_ALL_NAME "All"
 #define MAP_ZONE_NORMAL_NAME "Normal"
 #define MAP_ZONE_PVP_NAME "PvP"
@@ -578,12 +578,16 @@ struct map_zone_data {
 	int disabled_commands_count;
 	struct map_zone_skill_damage_cap_entry **capped_skills;
 	int capped_skills_count;
+	struct {
+		unsigned int special : 2;/* 1: whether this is a mergeable zone; 2: whether it is a merged zone */
+	} info;
 };
 void map_zone_init(void);
 void map_zone_remove(int m);
 void map_zone_apply(int m, struct map_zone_data *zone, const char* start, const char* buffer, const char* filepath);
 void map_zone_change(int m, struct map_zone_data *zone, const char* start, const char* buffer, const char* filepath);
 void map_zone_change2(int m, struct map_zone_data *zone);
+struct map_zone_data *map_merge_zone(struct map_zone_data *main, struct map_zone_data *other);
 
 struct map_zone_data map_zone_all;/* used as a base on all maps */
 struct map_zone_data map_zone_pk;/* used for (pk_mode) */
@@ -949,26 +953,6 @@ typedef struct elemental_data	TBL_ELEM;
 	( ((bl) == (struct block_list*)NULL || (bl)->type != (type_)) ? (T ## type_ *)NULL : (T ## type_ *)(bl) )
 
 
-
-#ifdef BETA_THREAD_TEST
-
-extern char default_codepage[32];
-extern int map_server_port;
-extern char map_server_ip[32];
-extern char map_server_id[32];
-extern char map_server_pw[32];
-extern char map_server_db[32];
-
-extern char log_db_ip[32];
-extern int log_db_port;
-extern char log_db_id[32];
-extern char log_db_pw[32];
-extern char log_db_db[32];
-
-
-
-#endif
-
 char interreg_db[32];
 char autotrade_merchants_db[32];
 char autotrade_data_db[32];
@@ -979,10 +963,10 @@ extern char db_id[32];
 extern char db_pw[32];
 extern char db_db2name[32];
 
-#include "../common/sql.h"
+char default_codepage[32];
+
 
 extern Sql* mmysql_handle;
-extern Sql* logmysql_handle;
 extern Sql* dbmysql_handle;
 
 void sv_readsqldb (char* name, char* next_name, int param_size, int max_allowed, bool (*sub_parse_row)(char* string[], int columns, int current));

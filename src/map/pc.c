@@ -245,7 +245,7 @@ int pc_addspiritball(struct map_session_data *sd,int interval,int max)
 	sd->spirit_timer[i] = tid;
 	sd->spiritball++;
 	if((sd->class_&MAPID_THIRDMASK) == MAPID_ROYAL_GUARD)
-		clif_millenniumshield(sd,sd->spiritball);
+		clif_millenniumshield(&sd->bl,sd->spiritball);
 	else
 		clif_spiritball(&sd->bl);
 
@@ -284,7 +284,7 @@ int pc_delspiritball(struct map_session_data *sd,int count,int type)
 
 	if(!type) {
 		if((sd->class_&MAPID_THIRDMASK) == MAPID_ROYAL_GUARD)
-			clif_millenniumshield(sd,sd->spiritball);
+			clif_millenniumshield(&sd->bl,sd->spiritball);
 		else
 			clif_spiritball(&sd->bl);
 	}
@@ -3660,9 +3660,9 @@ int pc_insert_card(struct map_session_data *sd, int idx_card, int idx_equip)
 		clif_insert_card(sd,idx_equip,idx_card,1);
 	} else {
 		// success
-		log_pick_pc(sd, LOG_TYPE_OTHER, -1, &sd->status.inventory[idx_equip],sd->inventory_data[i]);
+		logs->pick_pc(sd, LOG_TYPE_OTHER, -1, &sd->status.inventory[idx_equip], sd->inventory_data[i]);
 		sd->status.inventory[idx_equip].card[i] = nameid;
-		log_pick_pc(sd, LOG_TYPE_OTHER,  1, &sd->status.inventory[idx_equip],sd->inventory_data[i]);
+		logs->pick_pc(sd, LOG_TYPE_OTHER, 1, &sd->status.inventory[idx_equip], sd->inventory_data[i]);
 		clif_insert_card(sd,idx_equip,idx_card,0);
 	}
 
@@ -3780,7 +3780,7 @@ int pc_payzeny(struct map_session_data *sd,int zeny, enum e_log_pick_type type, 
 	clif_updatestatus(sd,SP_ZENY);
 
 	if(!tsd) tsd = sd;
-	log_zeny(sd, type, tsd, -zeny);
+	logs->zeny(sd, type, tsd, -zeny);
 	if(zeny > 0 && sd->state.showzeny) {
 		char output[255];
 		sprintf(output, "Removed %dz.", zeny);
@@ -3893,7 +3893,7 @@ int pc_getzeny(struct map_session_data *sd,int zeny, enum e_log_pick_type type, 
 	clif_updatestatus(sd,SP_ZENY);
 
 	if(!tsd) tsd = sd;
-	log_zeny(sd, type, tsd, zeny);
+	logs->zeny(sd, type, tsd, zeny);
 	if(zeny > 0 && sd->state.showzeny) {
 		char output[255];
 		sprintf(output, "Gained %dz.", zeny);
@@ -4009,7 +4009,7 @@ int pc_additem(struct map_session_data *sd,struct item *item_data,int amount,e_l
 	if(!itemdb_isstackable2(data) && !item_data->unique_id)
 		sd->status.inventory[i].unique_id = itemdb_unique_id(0,0);
 #endif
-	log_pick_pc(sd, log_type, amount, &sd->status.inventory[i],sd->inventory_data[i]);
+	logs->pick_pc(sd, log_type, amount, &sd->status.inventory[i], sd->inventory_data[i]);
 
 	sd->weight += w;
 	clif_updatestatus(sd,SP_WEIGHT);
@@ -4048,7 +4048,7 @@ int pc_delitem(struct map_session_data *sd,int n,int amount,int type, short reas
 	if(sd->status.inventory[n].nameid==0 || amount <= 0 || sd->status.inventory[n].amount<amount || sd->inventory_data[n] == NULL)
 		return 1;
 
-	log_pick_pc(sd, log_type, -amount, &sd->status.inventory[n],sd->inventory_data[n]);
+	logs->pick_pc(sd, log_type, -amount, &sd->status.inventory[n], sd->inventory_data[n]);
 
 	sd->status.inventory[n].amount -= amount;
 	sd->weight -= sd->inventory_data[n]->weight*amount ;
@@ -4466,7 +4466,7 @@ int pc_useitem(struct map_session_data *sd,int n)
 
 	//Dead Branch & Bloody Branch & Porings Box
 	if(nameid == ITEMID_BRANCH_OF_DEAD_TREE || nameid == ITEMID_BLOODY_DEAD_BRANCH || nameid == ITEMID_PORING_BOX)
-		log_branch(sd);
+		logs->branch(sd);
 
 	sd->itemid = sd->status.inventory[n].nameid;
 	sd->itemindex = n;
@@ -4566,7 +4566,7 @@ int pc_cart_additem(struct map_session_data *sd,struct item *item_data,int amoun
 		clif_cart_additem(sd,i,amount,0);
 	}
 	sd->status.cart[i].favorite = 0;/* clear */
-	log_pick_pc(sd, log_type, amount, &sd->status.cart[i],data);
+	logs->pick_pc(sd, log_type, amount, &sd->status.cart[i], data);
 
 	sd->cart_weight += w;
 	clif_updatestatus(sd,SP_CARTINFO);
@@ -4588,7 +4588,7 @@ int pc_cart_delitem(struct map_session_data *sd,int n,int amount,int type,e_log_
 	if(sd->status.cart[n].nameid == 0 || sd->status.cart[n].amount < amount || !(data = itemdb_exists(sd->status.cart[n].nameid)))
 		return 1;
 
-	log_pick_pc(sd, log_type, -amount, &sd->status.cart[n],data);
+	logs->pick_pc(sd, log_type, -amount, &sd->status.cart[n], data);
 
 	sd->status.cart[n].amount -= amount;
 	sd->cart_weight -= data->weight*amount;
@@ -4802,7 +4802,7 @@ int pc_steal_item(struct map_session_data *sd,struct block_list *bl, uint16 skil
 		party_foreachsamemap(pc_show_steal,sd,AREA_SIZE,sd,tmp_item.nameid);
 
 	//Logs items, Stolen from mobs [Lupus]
-	log_pick_mob(md, LOG_TYPE_STEAL, -1, &tmp_item,data);
+	logs->pick_mob(md, LOG_TYPE_STEAL, -1, &tmp_item, data);
 
 	//A Rare Steal Global Announce by Lupus
 	if(md->db->dropitem[i].p<=battle_config.rare_drop_announce) {
@@ -6204,50 +6204,88 @@ int pc_need_status_point(struct map_session_data *sd, int type, int val)
 	return sp;
 }
 
-/// Raises a stat by 1.
-/// Obeys max_parameter limits.
-/// Subtracts stat points.
-///
-/// @param type The stat to change (see enum _sp)
-int pc_statusup(struct map_session_data *sd, int type)
-{
-	int max, need, val;
+/**
+ * Returns the value the specified stat can be increased by with the current
+ * amount of available status points for the current character's class.
+ *
+ * @param sd   The target character.
+ * @param type Stat to verify.
+ * @return Maximum value the stat could grow by.
+ */
+int pc_maxparameterincrease(struct map_session_data* sd, int type) {
+	int base, final, status_points = sd->status.status_point;
+
+	base = final = pc_getstat(sd, type);
+
+	while (final <= pc_maxparameter(sd) && status_points >= 0) {
+#if VERSION == 1 // renewal status point cost formula
+		status_points -= (final < 100) ? (2 + (final - 1) / 10) : (16 + 4 * ((final - 100) / 5));
+#else
+		status_points -= (1 + (final + 9) / 10);
+#endif
+		final++;
+	}
+	final--;
+
+	return final > base ? final-base : 0;
+}
+
+/**
+ * Raises a stat by the specified amount.
+ * Obeys max_parameter limits.
+ * Subtracts stat points.
+ *
+ * @param sd       The target character.
+ * @param type     The stat to change (see enum _sp)
+ * @param increase The stat increase amount.
+ * @return true if the stat was increased by any amount, false if there were no
+ *         changes.
+ */
+bool pc_statusup(struct map_session_data* sd, int type, int increase) {
+	int max_increase = 0, current = 0, needed_points = 0, final_value = 0;
 
 	nullpo_ret(sd);
 
 	// check conditions
-	need = pc_need_status_point(sd,type,1);
-	if(type < SP_STR || type > SP_LUK || need < 0 || need > sd->status.status_point) {
-		clif_statusupack(sd,type,0,0);
-		return 1;
+	if(type < SP_STR || type > SP_LUK || increase <= 0) {
+		clif_statusupack(sd, type, 0, 0);
+		return false;
 	}
 
 	// check limits
-	max = pc_maxparameter(sd);
-	if(pc_getstat(sd,type) >= max) {
-		clif_statusupack(sd,type,0,0);
-		return 1;
+	current = pc_getstat(sd, type);
+	max_increase = pc_maxparameterincrease(sd, type);
+	increase = cap_value(increase, 0, max_increase); // cap to the maximum status points available
+	if (increase <= 0 || current + increase > pc_maxparameter(sd)) {
+		clif_statusupack(sd, type, 0, 0);
+		return false;
+	}
+
+	// check status points
+	needed_points = pc_need_status_point(sd, type, increase);
+	if (needed_points < 0 || needed_points > sd->status.status_point) { // Sanity check
+		clif_statusupack(sd, type, 0, 0);
+		return false;
 	}
 
 	// set new values
-	val = pc_setstat(sd, type, pc_getstat(sd,type) + 1);
-	sd->status.status_point -= need;
+	final_value = pc_setstat(sd, type, current + increase);
+	sd->status.status_point -= needed_points;
 
 	status_calc_pc(sd,SCO_NONE);
 
 	// update increase cost indicator
-	if(need != pc_need_status_point(sd,type,1))
-		clif_updatestatus(sd, SP_USTR + type-SP_STR);
+	clif_updatestatus(sd, SP_USTR + type-SP_STR);
 
 	// update statpoint count
 	clif_updatestatus(sd,SP_STATUSPOINT);
 
 	// update stat value
-	clif_statusupack(sd,type,1,val); // required
-	if(val > 255)
+	clif_statusupack(sd, type, 1, final_value); // required
+	if(final_value > 255)
 		clif_updatestatus(sd,type); // send after the 'ack' to override the truncated value
 
-	return 0;
+	return true;
 }
 
 /// Raises a stat by the specified amount.
@@ -6919,7 +6957,7 @@ int pc_dead(struct map_session_data *sd,struct block_list *src)
 			case BL_MOB: {
 					struct mob_data *md=(struct mob_data *)src;
 					if(md->target_id==sd->bl.id)
-						mob_unlocktarget(md,tick);
+						mob->unlocktarget(md, tick);
 					if(battle_config.mobs_level_up && md->status.hp &&
 					   (unsigned int)md->level < pc_maxbaselv(sd) &&
 					   !md->guardian_data && !md->special_state.ai// Guardians/summons should not level. [Skotlex]
@@ -7371,7 +7409,7 @@ int pc_setparam(struct map_session_data *sd,int type,int val)
 		case SP_ZENY:
 			if(val < 0)
 				return 0;// can't set negative zeny
-			log_zeny(sd, LOG_TYPE_SCRIPT, sd, -(sd->status.zeny - cap_value(val, 0, MAX_ZENY)));
+			logs->zeny(sd, LOG_TYPE_SCRIPT, sd, -(sd->status.zeny - cap_value(val, 0, MAX_ZENY)));
 			sd->status.zeny = cap_value(val, 0, MAX_ZENY);
 			break;
 		case SP_BASEEXP:
@@ -8448,17 +8486,19 @@ int pc_cleareventtimer(struct map_session_data *sd)
 int pc_checkcombo(struct map_session_data *sd, struct item_data *data)
 {
 	int i, j, k, z;
-	int index, idx, success = 0;
+	int index, success = 0;
+	struct pc_combos *combo;
 
 	for(i = 0; i < data->combos_count; i++) {
 
 		/* ensure this isn't a duplicate combo */
-		if(sd->combos.bonus != NULL) {
+		if(sd->combos != NULL) {
 			int x;
-			ARR_FIND(0, sd->combos.count, x, sd->combos.id[x] == data->combos[i]->id);
+
+			ARR_FIND(0, sd->combo_count, x, sd->combos[x].id == data->combos[i]->id);
 
 			/* found a match, skip this combo */
-			if(x < sd->combos.count)
+			if(x < sd->combo_count)
 				continue;
 		}
 
@@ -8509,21 +8549,12 @@ int pc_checkcombo(struct map_session_data *sd, struct item_data *data)
 
 		/* we got here, means all items in the combo are matching */
 
-		idx = sd->combos.count;
+		RECREATE(sd->combos, struct pc_combos, ++sd->combo_count);
 
-		if(sd->combos.bonus == NULL) {
-			CREATE(sd->combos.bonus, struct script_code *, 1);
-			CREATE(sd->combos.id, unsigned short, 1);
-			sd->combos.count = 1;
-		} else {
-			RECREATE(sd->combos.bonus, struct script_code *, ++sd->combos.count);
-			RECREATE(sd->combos.id, unsigned short, sd->combos.count);
-		}
+		combo = &sd->combos[sd->combo_count - 1];
 
-		/* we simply copy the pointer */
-		sd->combos.bonus[idx] = data->combos[i]->script;
-		/* save this combo's id */
-		sd->combos.id[idx] = data->combos[i]->id;
+		combo->bonus = data->combos[i]->script;
+		combo->id = data->combos[i]->id;
 
 		success++;
 	}
@@ -8535,26 +8566,30 @@ int pc_removecombo(struct map_session_data *sd, struct item_data *data)
 {
 	int i, retval = 0;
 
-	if(sd->combos.bonus == NULL)
+	if(!sd->combos )
 		return 0;/* nothing to do here, player has no combos */
+
 	for(i = 0; i < data->combos_count; i++) {
 		/* check if this combo exists in this user */
 		int x = 0, cursor = 0, j;
-		ARR_FIND(0, sd->combos.count, x, sd->combos.id[x] == data->combos[i]->id);
+
+		ARR_FIND(0, sd->combo_count, x, sd->combos[x].id == data->combos[i]->id);
 		/* no match, skip this combo */
-		if(!(x < sd->combos.count))
+		if(!(x < sd->combo_count))
 			continue;
 
-		sd->combos.bonus[x] = NULL;
-		sd->combos.id[x] = 0;
+		sd->combos[x].bonus = NULL;
+		sd->combos[x].id = 0;
+
 		retval++;
-		for(j = 0, cursor = 0; j < sd->combos.count; j++) {
-			if(sd->combos.bonus[j] == NULL)
+
+		for(j = 0, cursor = 0; j < sd->combo_count; j++) {
+			if(sd->combos[j].bonus == NULL)
 				continue;
 
 			if(cursor != j) {
-				sd->combos.bonus[cursor] = sd->combos.bonus[j];
-				sd->combos.id[cursor]    = sd->combos.id[j];
+				sd->combos[cursor].bonus = sd->combos[j].bonus;
+				sd->combos[cursor].id    = sd->combos[j].id;
 			}
 
 			cursor++;
@@ -8565,11 +8600,10 @@ int pc_removecombo(struct map_session_data *sd, struct item_data *data)
 			continue;
 
 		/* it's empty, we can clear all the memory */
-		if((sd->combos.count = cursor) == 0) {
-			aFree(sd->combos.bonus);
-			aFree(sd->combos.id);
-			sd->combos.bonus = NULL;
-			sd->combos.id = NULL;
+		if((sd->combo_count = cursor) == 0) {
+			aFree(sd->combos);
+			sd->combos = NULL;
+
 			return retval; /* we also can return at this point for we have no more combos to check */
 		}
 
@@ -8995,7 +9029,7 @@ int pc_unequipitem(struct map_session_data *sd,int n,int flag)
  *------------------------------------------*/
 int pc_checkitem(struct map_session_data *sd)
 {
-	int i,id,calc_flag = 0;
+	int i, id, calc_flag = 0;
 
 	nullpo_ret(sd);
 
@@ -9549,7 +9583,7 @@ bool pc_isautolooting(struct map_session_data *sd, int nameid)
  * @param command Command name with @/# and without params
  */
 bool pc_can_use_command(struct map_session_data *sd, const char *command) {
-	return atcommand_can_use(sd,command);
+	return atcommand->can_use(sd, command);
 }
 
 static int pc_charm_timer(int tid, int64 tick, int id, intptr_t data)
@@ -9878,7 +9912,7 @@ void pc_read_skill_tree(void) {
 
 	jnamelen = ARRAYLENGTH(jnames);
 
-	while((skt = config_setting_get_elem(skill_tree_conf.root,i++))) {
+	while((skt = libconfig->setting_get_elem(skill_tree_conf.root,i++))) {
 		int k, idx;
 		const char *name = config_setting_name(skt);
 
@@ -9890,12 +9924,12 @@ void pc_read_skill_tree(void) {
 		}
 
 
-		if((skills = config_setting_get_member(skt,"skills"))) {
+		if((skills = libconfig->setting_get_member(skt,"skills"))) {
 			int c = 0;
 
 			idx = pc_class2idx(jnames[k].id);
 
-			while((sk = config_setting_get_elem(skills,c++))) {
+			while((sk = libconfig->setting_get_elem(skills,c++))) {
 				const char *sk_name = config_setting_name(sk);
 				int skill_id;
 
@@ -9920,7 +9954,7 @@ void pc_read_skill_tree(void) {
 						config_setting_lookup_int(sk, "MinJobLevel", &jlevel);
 						skill_tree[idx][skidx].max = (unsigned char)max;
 						skill_tree[idx][skidx].joblv = (unsigned char)jlevel;
-						rlen = config_setting_length(sk);
+						rlen = libconfig->setting_length(sk);
 						offset += jlevel ? 2 : 1;
 					} else {
 						skill_tree[idx][skidx].max = (unsigned char)config_setting_get_int(sk);
@@ -9928,7 +9962,7 @@ void pc_read_skill_tree(void) {
 					}
 
 					for(h = offset; h < rlen && h < MAX_PC_SKILL_REQUIRE; h++) {
-						config_setting_t *rsk = config_setting_get_elem(sk,h);
+						config_setting_t *rsk = libconfig->setting_get_elem(sk, h);
 						if(rsk && (rskid = skill_name2id(config_setting_name(rsk)))) {
 							skill_tree[idx][skidx].need[h].id  = rskid;
 							skill_tree[idx][skidx].need[h].idx = skill_get_index(rskid);
@@ -9949,7 +9983,7 @@ void pc_read_skill_tree(void) {
 	}
 
 	i = 0;
-	while((skt = config_setting_get_elem(skill_tree_conf.root,i++))) {
+	while((skt = libconfig->setting_get_elem(skill_tree_conf.root,i++))) {
 		int k, idx, v = 0;
 		const char *name = config_setting_name(skt);
 		const char *iname;
@@ -9963,7 +9997,7 @@ void pc_read_skill_tree(void) {
 		}
 		idx = pc_class2idx(jnames[k].id);
 
-		if((inherit = config_setting_get_member(skt,"inherit"))) {
+		if((inherit = libconfig->setting_get_member(skt,"inherit"))) {
 			while((iname = config_setting_get_string_elem(inherit, v++))) {
 				int b = 0, a, d, f, fidx;
 

@@ -521,7 +521,7 @@ int64 battle_calc_base_damage(struct block_list *src, struct block_list *bl, uin
 		damage = (batk << 1) + battle_calc_weapon_damage(src, bl, skill_id, skill_lv, &st->rhw, nk, n_ele, s_ele, s_ele_, status_get_size(bl), type, flag, flag2);
 	return damage;
 }
-int64 battle_calc_base_damage2(struct status_data *status, struct weapon_atk *wa, struct status_change *sc, unsigned short t_size, struct map_session_data *sd, int flag)
+int64 battle_calc_base_damage2(struct status_data *st, struct weapon_atk *wa, struct status_change *sc, unsigned short t_size, struct map_session_data *sd, int flag)
 {
 	unsigned int atkmin=0, atkmax=0;
 	short type = 0;
@@ -529,8 +529,8 @@ int64 battle_calc_base_damage2(struct status_data *status, struct weapon_atk *wa
 
 	if (!sd) { //Mobs/Pets
 		if(flag&4) {
-			atkmin = status->matk_min;
-			atkmax = status->matk_max;
+			atkmin = st->matk_min;
+			atkmax = st->matk_max;
 		} else {
 			atkmin = wa->atk;
 			atkmax = wa->atk2;
@@ -539,10 +539,10 @@ int64 battle_calc_base_damage2(struct status_data *status, struct weapon_atk *wa
 			atkmin = atkmax;
 	} else { //PCs
 		atkmax = wa->atk;
-		type = (wa == &status->lhw)?EQI_HAND_L:EQI_HAND_R;
+		type = (wa == &st->lhw)?EQI_HAND_L:EQI_HAND_R;
 
 		if (!(flag&1) || (flag&2)) { //Normal attacks
-			atkmin = status->dex;
+			atkmin = st->dex;
 
 			if (sd->equip_index[type] >= 0 && sd->inventory_data[sd->equip_index[type]])
 				atkmin = atkmin*(80 + sd->inventory_data[sd->equip_index[type]]->wlv*20)/100;
@@ -579,9 +579,9 @@ int64 battle_calc_base_damage2(struct status_data *status, struct weapon_atk *wa
 
 	//Finally, add baseatk
 	if(flag&4)
-		damage += status->matk_min;
+		damage += st->matk_min;
 	else
-		damage += status->batk;
+		damage += st->batk;
 
 	//rodatazone says that Overrefine bonuses are part of baseatk
 	//Here we also apply the weapon_atk_rate bonus so it is correctly applied on left/right hands.
@@ -2282,7 +2282,7 @@ int battle_calc_skillratio(int attack_type, struct block_list *src, struct block
 				case LG_RAGEBURST:
 					if(sc){
 						skillratio += -100 + (status_get_max_hp(src) - status_get_hp(src)) / 100 + sc->fv_counter * 200;
-						clif_millenniumshield(sd, (sc->fv_counter = 0));
+						clif_millenniumshield(src, (sc->fv_counter = 0));
 					}
 					RE_LVL_DMOD(100);
 					break;
@@ -2571,7 +2571,7 @@ int64 battle_calc_damage(struct block_list *src,struct block_list *bl,struct Dam
 
 	if(!damage)
 		return 0;
-	if(battle_config.ksprotection && mob_ksprotected(src, bl))
+	if(battle_config.ksprotection && mob->ksprotected(src, bl))
 		return 0;
 	if(map_getcell(bl->m, bl->x, bl->y, CELL_CHKMAELSTROM) && skill_get_type(skill_id) != BF_MISC 
 			&& skill_get_casttype(skill_id) == CAST_GROUND)
@@ -2690,8 +2690,7 @@ int64 battle_calc_damage(struct block_list *src,struct block_list *bl,struct Dam
 			if(sce->val3 <= 0) {   // Shield Down
 				sce->val2--;
 				if(sce->val2 > 0) {
-					if(sd)
-						clif_millenniumshield(sd,sce->val2);
+						clif_millenniumshield(bl,sce->val2);
 					sce->val3 = 1000; // Next Shield
 				} else
 					status_change_end(bl,SC_MILLENNIUMSHIELD,INVALID_TIMER); // All shields down
@@ -2938,9 +2937,9 @@ int64 battle_calc_damage(struct block_list *src,struct block_list *bl,struct Dam
 		   rnd()%100 < sce->val3)
 		   status->heal(src, damage*sce->val4 / 100, 0, 3);
 
-		if(sd && (sce = sc->data[SC_FORCEOFVANGUARD]) && flag&BF_WEAPON
+		if((sce = sc->data[SC_FORCEOFVANGUARD]) && flag&BF_WEAPON
 			&& rnd()%100 < sce->val2 && sc->fv_counter <= sce->val3)
-				clif_millenniumshield(sd, sc->fv_counter++);
+				clif_millenniumshield(bl, sc->fv_counter++);
 
 		if (sc->data[SC_STYLE_CHANGE]) {
                     TBL_HOM *hd = BL_CAST(BL_HOM,bl); //when being hit
@@ -3004,9 +3003,9 @@ int64 battle_calc_damage(struct block_list *src,struct block_list *bl,struct Dam
 
 	if(bl->type == BL_MOB && !status->isdead(bl) && src != bl) {
 		if(damage > 0)
-			mobskill_event((TBL_MOB *)bl,src,gettick(),flag);
+			mob->skill_event((TBL_MOB *)bl, src, gettick(), flag);
 		if(skill_id)
-			mobskill_event((TBL_MOB *)bl,src,gettick(),MSC_SKILLUSED|(skill_id<<16));
+			mob->skill_event((TBL_MOB *)bl, src, gettick(), MSC_SKILLUSED | (skill_id << 16));
 	}
 	if(sd) {
 		if(pc_ismadogear(sd) && rnd()%100 < 50) {
@@ -6653,7 +6652,7 @@ void brAthena_report(char *date, char *time_c)
 	config |= C_SECURE_NPCTIMEOUT;
 #endif
 
-	if(log_config.sql_logs)
+	if (logs->config.sql_logs)
 		config |= C_SQL_LOGS;
 
 #ifdef MEMWATCH
