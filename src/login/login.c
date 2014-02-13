@@ -38,29 +38,11 @@ struct Login_Config login_config;
 int login_fd; // login server socket
 struct mmo_char_server server[MAX_SERVERS]; // char server data
 
-// Account engines available
-static struct {
+static struct account_engine{
 	AccountDB *(*constructor)(void);
 	AccountDB *db;
-} account_engines[] = {
-	{account_db_sql, NULL},
-#ifdef ACCOUNTDB_ENGINE_0
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_0), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_1
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_1), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_2
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_2), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_3
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_3), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_4
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_4), NULL},
-#endif
-	// end of structure
-	{NULL, NULL}
+} account_engine[] = {
+	{account_db_sql, NULL}
 };
 // account database
 AccountDB *accounts = NULL;
@@ -868,10 +850,50 @@ int parse_fromchar(int fd)
 				}
 			break;
 
-		default:
-				ShowError(read_message("Source.login.login_pfromchar_nook"), command);
-				set_eof(fd);
+		case 0x2740: // Accinfo request forwarded by charserver on mapserver's account
+			if(RFIFOREST(fd) < 22)
 				return 0;
+			else {
+				struct mmo_account acc;
+				int account_id = RFIFOL(fd, 2), u_fd = RFIFOL(fd, 6), u_aid = RFIFOL(fd, 10), u_group = RFIFOL(fd, 14), map_fd = RFIFOL(fd, 18);
+				if(accounts->load_num(accounts, &acc, account_id)) {
+					WFIFOHEAD(fd,183);
+					WFIFOW(fd,0) = 0x2737;
+					safestrncpy((char*)WFIFOP(fd,2), acc.userid, NAME_LENGTH);
+					if (u_group >= acc.group_id) {
+						safestrncpy((char*)WFIFOP(fd,26), acc.pass, 33);
+					}
+					safestrncpy((char*)WFIFOP(fd,59), acc.email, 40);
+					safestrncpy((char*)WFIFOP(fd,99), acc.last_ip, 16);
+					WFIFOL(fd,115) = acc.group_id;
+					safestrncpy((char*)WFIFOP(fd,119), acc.lastlogin, 24);
+					WFIFOL(fd,143) = acc.logincount;
+					WFIFOL(fd,147) = acc.state;
+					if (u_group >= acc.group_id) {
+						safestrncpy((char*)WFIFOP(fd,151), acc.pincode, 5);
+					}
+					safestrncpy((char*)WFIFOP(fd,156), acc.birthdate, 11);
+					WFIFOL(fd,167) = map_fd;
+					WFIFOL(fd,171) = u_fd;
+					WFIFOL(fd,175) = u_aid;
+					WFIFOL(fd,179) = account_id;
+					WFIFOSET(fd,183);
+				} else {
+					WFIFOHEAD(fd,18);
+					WFIFOW(fd,0) = 0x2736;
+					WFIFOL(fd,2) = map_fd;
+					WFIFOL(fd,6) = u_fd;
+					WFIFOL(fd,10) = u_aid;
+					WFIFOL(fd,14) = account_id;
+					WFIFOSET(fd,18);
+				}
+				RFIFOSKIP(fd,22);
+			}
+		break;
+		default:
+			ShowError(read_message("Source.login.login_pfromchar_nook"), command);
+			set_eof(fd);
+			return 0;
 		} // switch
 	} // while
 
@@ -1015,26 +1037,28 @@ int mmo_auth(struct login_session_data *sd, bool isServer)
 	}
 
 	if(login_config.client_hash_check && !isServer) {
-		struct client_hash_node *node = login_config.client_hash_nodes;
+		struct client_hash_node *node = NULL;
 		bool match = false;
 
-		if(!sd->has_client_hash) {
-			ShowNotice(read_message("Source.login.login_mmo_auth_s7"), sd->userid, sd->passwd, acc.state, ip);
-			return 5;
-		}
-
-		while(node) {
-			if(node->group_id <= acc.group_id && memcmp(node->hash, sd->client_hash, 16) == 0) {
+		for(node = login_config.client_hash_nodes; node; node = node->next) {
+			if(acc.group_id < node->group_id)
+				continue;
+			if(*node->hash == '\0' // Allowed to login without hash
+			 || (sd->has_client_hash && memcmp(node->hash, sd->client_hash, 16) == 0 ) // Correct hash
+			) {
 				match = true;
 				break;
 			}
-
-			node = node->next;
 		}
 
 		if(!match) {
 			char smd5[33];
 			int i;
+
+			if(!sd->has_client_hash) {
+				ShowNotice(read_message("Source.login.login_mmo_auth_s7"), sd->userid, sd->passwd, acc.state, ip);
+				return 5;
+			}
 
 			for(i = 0; i < 16; i++)
 				sprintf(&smd5[i * 2], "%02x", sd->client_hash[i]);
@@ -1531,7 +1555,6 @@ void login_set_defaults()
 	login_config.dynamic_pass_failure_ban_duration = 5;
 	login_config.use_dnsbl = false;
 	safestrncpy(login_config.dnsbl_servs, "", sizeof(login_config.dnsbl_servs));
-	safestrncpy(login_config.account_engine, "auto", sizeof(login_config.account_engine));
 
 	login_config.client_hash_check = 0;
 	login_config.client_hash_nodes = NULL;
@@ -1617,15 +1640,19 @@ int login_config_read(const char *cfgName)
 				int i;
 				CREATE(nnode, struct client_hash_node, 1);
 
-				for(i = 0; i < 32; i += 2) {
-					char buf[3];
-					unsigned int byte;
+				if(strcmpi(md5, "disabled") == 0) {
+					nnode->hash[0] = '\0';
+				} else {
+					for(i = 0; i < 32; i += 2) {
+						char buf[3];
+						unsigned int byte;
 
-					memcpy(buf, &md5[i], 2);
-					buf[2] = 0;
+						memcpy(buf, &md5[i], 2);
+						buf[2] = 0;
 
-					sscanf(buf, "%x", &byte);
-					nnode->hash[i / 2] = (uint8)(byte & 0xFF);
+						sscanf(buf, "%x", &byte);
+						nnode->hash[i / 2] = (uint8)(byte & 0xFF);
+					}
 				}
 
 				nnode->group_id = group;
@@ -1633,19 +1660,14 @@ int login_config_read(const char *cfgName)
 
 				login_config.client_hash_nodes = nnode;
 			}
-		} else if(!strcmpi(w1, "import"))
+		}
+		else if(!strcmpi(w1, "import"))
 			login_config_read(w2);
-		else if(!strcmpi(w1, "account.engine"))
-			safestrncpy(login_config.account_engine, w2, sizeof(login_config.account_engine));
-		else {
-			// try the account engines
-			int i;
-			for(i = 0; account_engines[i].constructor; ++i) {
-				AccountDB *db = account_engines[i].db;
-				if(db && db->set_property(db, w1, w2))
-					break;
-			}
-			// try others
+		else
+		{
+			AccountDB* db = account_engine[0].db;
+			if(db)
+				db->set_property(db, w1, w2);
 			ipban_config_read(w1, w2);
 			loginlog_config_read(w1, w2);
 		}
@@ -1653,26 +1675,6 @@ int login_config_read(const char *cfgName)
 	fclose(fp);
 	ShowConf("Leitura completa %s.\n", cfgName);
 	return 0;
-}
-
-/// Get the engine selected in the config settings.
-/// Updates the config setting with the selected engine if 'auto'.
-static AccountDB *get_account_engine(void)
-{
-	int i;
-	bool get_first = (strcmp(login_config.account_engine,"auto") == 0);
-
-	for(i = 0; account_engines[i].constructor; ++i) {
-		char name[sizeof(login_config.account_engine)];
-		AccountDB *db = account_engines[i].db;
-		if(db && db->get_property(db, "engine.name", name, sizeof(name)) &&
-		   (get_first || strcmp(name, login_config.account_engine) == 0)) {
-			if(get_first)
-				safestrncpy(login_config.account_engine, name, sizeof(login_config.account_engine));
-			return db;
-		}
-	}
-	return NULL;
 }
 
 //--------------------------------------
@@ -1697,13 +1699,9 @@ void do_final(void)
 
 	ipban_final();
 
-	for(i = 0; account_engines[i].constructor; ++i) {
-		// destroy all account engines
-		AccountDB *db = account_engines[i].db;
-		if(db) {
-			db->destroy(db);
-			account_engines[i].db = NULL;
-		}
+	if(account_engine[0].db) {// destroy account engine
+		account_engine[0].db->destroy(account_engine[0].db);
+		account_engine[0].db = NULL;
 	}
 	accounts = NULL; // destroyed in account_engines
 	online_db->destroy(online_db, NULL);
@@ -1757,16 +1755,13 @@ int do_init(int argc, char **argv)
 {
 	int i;
 
-	// intialize engines (to accept config settings)
-	for(i = 0; account_engines[i].constructor; ++i)
-		account_engines[i].db = account_engines[i].constructor();
+	// intialize engine (to accept config settings)
+	account_engine[0].db = account_engine[0].constructor();
 
 	// read login-server configuration
 	login_set_defaults();
 	login_config_read((argc > 1) ? argv[1] : LOGIN_CONF_NAME);
 	login_lan_config_read((argc > 2) ? argv[2] : LAN_CONF_NAME);
-
-	rnd_init();
 
 	for(i = 0; i < ARRAYLENGTH(server); ++i)
 		chrif_server_init(i);
@@ -1799,14 +1794,14 @@ int do_init(int argc, char **argv)
 	}
 
 	// Account database init
-	accounts = get_account_engine();
+	accounts = account_engine[0].db;
 	if(accounts == NULL) {
-		ShowFatalError(read_message("Source.login.login_doinit_s1"), login_config.account_engine);
+		ShowFatalError(read_message("Source.login.login_doinit_s1"));
 		exit(EXIT_FAILURE);
 	} else {
 
 		if(!accounts->init(accounts)) {
-			ShowFatalError(read_message("Source.login.login_doinit_s2"), login_config.account_engine);
+			ShowFatalError(read_message("Source.login.login_doinit_s2"));
 			exit(EXIT_FAILURE);
 		}
 	}

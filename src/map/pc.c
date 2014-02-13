@@ -692,11 +692,14 @@ int pc_equippoint(struct map_session_data *sd,int n)
 	if(sd->inventory_data[n]->look == W_DAGGER  ||
 	   sd->inventory_data[n]->look == W_1HSWORD ||
 	   sd->inventory_data[n]->look == W_1HAXE) {
-		if(ep == EQP_HAND_R && (pc_checkskill(sd,AS_LEFT) > 0 || (sd->class_&MAPID_UPPERMASK) == MAPID_ASSASSIN ||
-		                        (sd->class_&MAPID_UPPERMASK) == MAPID_KAGEROUOBORO))//Kagerou and Oboro can dual wield daggers. [Rytech]
-			return EQP_ARMS;
-		if(ep == EQP_SHADOW_SHIELD)/* are there conditions for those? */
-			return EQP_SHADOW_WEAPON|EQP_SHADOW_SHIELD;
+		if((pc_checkskill(sd,AS_LEFT) > 0 ||
+			 (sd->class_&MAPID_UPPERMASK) == MAPID_ASSASSIN ||
+			 (sd->class_&MAPID_UPPERMASK) == MAPID_KAGEROUOBORO)) { //Kagerou and Oboro can dual wield daggers. [Rytech]
+			if(ep == EQP_HAND_R)
+				return EQP_ARMS;
+			if(ep == EQP_SHADOW_WEAPON)
+				return EQP_SHADOW_ARMS;
+		}
 	}
 	return ep;
 }
@@ -3976,10 +3979,13 @@ int pc_additem(struct map_session_data *sd,struct item *item_data,int amount,e_l
 
 	i = MAX_INVENTORY;
 
+	// Stackable | Non Rental
 	if(itemdb_isstackable2(data) && item_data->expire_time == 0) {
-		// Stackable | Non Rental
 		for(i = 0; i < MAX_INVENTORY; i++) {
-			if(sd->status.inventory[i].nameid == item_data->nameid && sd->status.inventory[i].bound == item_data->bound && memcmp(&sd->status.inventory[i].card, &item_data->card, sizeof(item_data->card)) == 0) {
+			if(sd->status.inventory[i].nameid == item_data->nameid &&
+			    sd->status.inventory[i].bound == item_data->bound &&
+			    sd->status.inventory[i].expire_time == 0 &&
+			    memcmp(&sd->status.inventory[i].card, &item_data->card, sizeof(item_data->card)) == 0 ) {
 				if(amount > MAX_AMOUNT - sd->status.inventory[i].amount || (data->stack.inventory && amount > data->stack.amount - sd->status.inventory[i].amount))
 					return 5;
 				sd->status.inventory[i].amount += amount;
@@ -5225,7 +5231,8 @@ int pc_checkallowskill(struct map_session_data *sd)
 		SC_LKCONCENTRATION,
 		SC_EDP,
 #endif
-		SC_FEARBREEZE
+		SC_FEARBREEZE,
+		SC_EXEEDBREAK,
 	 };
 	const enum sc_type scs_list[] = {
 		SC_AUTOGUARD,
@@ -6823,7 +6830,7 @@ void pc_damage(struct map_session_data *sd,struct block_list *src,unsigned int h
 		pet_target_check(sd,src,1);
 
 	if(sd->status.ele_id > 0)
-		elemental_set_target(sd,src);
+		elemental->set_target(sd, src);
 
 	sd->canlog_tick = gettick();
 }
@@ -6869,10 +6876,10 @@ int pc_dead(struct map_session_data *sd,struct block_list *src)
 	}
 
 	if(sd->md)
-		merc_delete(sd->md, 3); // Your mercenary soldier has ran away.
+		mercenary->delete(sd->md, 3); // Your mercenary soldier has ran away.
 
 	if(sd->ed)
-		elemental_delete(sd->ed, 0);
+		elemental->delete(sd->ed, 0);
 
 	// Leave duel if you die [LuzZza]
 	if(battle_config.duel_autoleave_when_die) {
@@ -7782,7 +7789,7 @@ int pc_jobchange(struct map_session_data *sd,int job, int upper)
 	clif_skillinfoblock(sd);
 
 	if(sd->ed)
-		elemental_delete(sd->ed, 0);
+		elemental->delete(sd->ed, 0);
 	if(sd->state.vending)
 		vending->close(sd);
 
@@ -8575,7 +8582,7 @@ int pc_removecombo(struct map_session_data *sd, struct item_data *data)
 
 		ARR_FIND(0, sd->combo_count, x, sd->combos[x].id == data->combos[i]->id);
 		/* no match, skip this combo */
-		if(!(x < sd->combo_count))
+		if(x == sd->combo_count)
 			continue;
 
 		sd->combos[x].bonus = NULL;
@@ -8595,19 +8602,17 @@ int pc_removecombo(struct map_session_data *sd, struct item_data *data)
 			cursor++;
 		}
 
-		/* check if combo requirements still fit */
-		if(pc_checkcombo(sd, data))
-			continue;
 
 		/* it's empty, we can clear all the memory */
 		if((sd->combo_count = cursor) == 0) {
 			aFree(sd->combos);
 			sd->combos = NULL;
-
-			return retval; /* we also can return at this point for we have no more combos to check */
+			break;
 		}
-
 	}
+
+	/* check if combo requirements still fit -- don't touch retval! */
+	pc_checkcombo( sd, data );
 
 	return retval;
 }
@@ -8682,19 +8687,18 @@ int pc_equipitem(struct map_session_data *sd,int n,int req_pos)
 		pos = req_pos&EQP_ACC;
 		if(pos == EQP_ACC)  //User specified both slots..
 			pos = sd->equip_index[EQI_ACC_R] >= 0 ? EQP_ACC_L : EQP_ACC_R;
-	}
-
-	if(pos == EQP_SHADOW_ACC) { // Shadow System
-		pos = req_pos&EQP_SHADOW_ACC;
-		if (pos == EQP_SHADOW_ACC)
-			pos = sd->equip_index[EQI_SHADOW_ACC_L] >= 0 ? EQP_SHADOW_ACC_R : EQP_SHADOW_ACC_L;
-	}
-
-	if(pos == EQP_ARMS && id->equip == EQP_HAND_R) {
-		//Dual wield capable weapon.
-		pos = (req_pos&EQP_ARMS);
-		if(pos == EQP_ARMS)  //User specified both slots, pick one for them.
+	} else if(pos == EQP_ARMS && id->equip == EQP_HAND_R) { //Dual wield capable weapon.
+	  	pos = (req_pos&EQP_ARMS);
+		if (pos == EQP_ARMS) //User specified both slots, pick one for them.
 			pos = sd->equip_index[EQI_HAND_R] >= 0 ? EQP_HAND_L : EQP_HAND_R;
+	} else if(pos == EQP_SHADOW_ACC) { //Accesories should only go in one of the two,
+		pos = req_pos&EQP_SHADOW_ACC;
+		if (pos == EQP_SHADOW_ACC) //User specified both slots..
+			pos = sd->equip_index[EQI_SHADOW_ACC_R] >= 0 ? EQP_SHADOW_ACC_L : EQP_SHADOW_ACC_R;
+	} else if(pos == EQP_SHADOW_ARMS && id->equip == EQP_SHADOW_WEAPON) { //Dual wield capable weapon.
+	  	pos = (req_pos&EQP_SHADOW_ARMS);
+		if (pos == EQP_SHADOW_ARMS) //User specified both slots, pick one for them.
+			pos = sd->equip_index[EQI_SHADOW_WEAPON] >= 0 ? EQP_SHADOW_SHIELD : EQP_SHADOW_WEAPON;
 	}
 
 	if(pos&EQP_HAND_R && battle_config.use_weapon_skill_range&BL_PC) {
@@ -8723,7 +8727,7 @@ int pc_equipitem(struct map_session_data *sd,int n,int req_pos)
 
 	sd->status.inventory[n].equip=pos;
 
-	if(pos & EQP_HAND_R) {
+	if(pos & (EQP_HAND_R|EQP_SHADOW_WEAPON)) {
 		if(id)
 			sd->weapontype1 = id->look;
 		else
@@ -8731,7 +8735,7 @@ int pc_equipitem(struct map_session_data *sd,int n,int req_pos)
 		pc_calcweapontype(sd);
 		clif_changelook(&sd->bl,LOOK_WEAPON,sd->status.weapon);
 	}
-	if(pos & EQP_HAND_L) {
+	if(pos & (EQP_HAND_L|EQP_SHADOW_SHIELD)) {
 		if(id) {
 			if(id->type == IT_WEAPON) {
 				sd->status.shield = 0;
@@ -10582,15 +10586,20 @@ void pc_autotrade_update(struct map_session_data *sd, enum e_pc_autotrade_update
 			if(SQL_ERROR == Sql_Query(mmysql_handle, "DELETE FROM `%s` WHERE `char_id` = '%d' LIMIT 1",autotrade_merchants_db,sd->status.char_id))
 				Sql_ShowDebug(mmysql_handle);
 			break;
-		case PAUC_START:
+		case PAUC_START: {
+			char title[MESSAGE_SIZE*2+1];
+
+			Sql_EscapeStringLen(mmysql_handle, title, sd->message, strnlen(sd->message, MESSAGE_SIZE));
+
 			if(SQL_ERROR == Sql_Query(mmysql_handle, "INSERT INTO `%s` (`account_id`,`char_id`,`sex`,`title`) VALUES ('%d','%d','%d','%s')",
 										autotrade_merchants_db,
 										sd->status.account_id,
 										sd->status.char_id,
 										sd->status.sex,
-										sd->message
+										title
 										))
 				Sql_ShowDebug(mmysql_handle);
+		}
 			/* yes we want it to fall */
 		case PAUC_REFRESH:
 			for(i = 0; i < sd->vend_num; i++) {

@@ -2527,12 +2527,14 @@ int battle_calc_skillratio(int attack_type, struct block_list *src, struct block
 			}
 			//Skill damage modifiers that stack linearly
 			if(sc && skill_id != PA_SACRIFICE){
+#ifdef RENEWAL_EDP
 				if(sc->data[SC_EDP]){
 					if(skill_id == AS_SONICBLOW ||
 						skill_id == GC_COUNTERSLASH ||
 						skill_id == GC_CROSSIMPACT)
 							skillratio >>= 1;
 				}
+#endif
 				if(sc->data[SC_OVERTHRUST])
 					skillratio += sc->data[SC_OVERTHRUST]->val3;
 				if(sc->data[SC_OVERTHRUSTMAX])
@@ -3403,11 +3405,36 @@ struct Damage battle_calc_magic_attack(struct block_list *src,struct block_list 
 		ad.damage = battle_calc_cardfix(BF_MAGIC, src, target, nk, s_ele, 0, ad.damage, 0, ad.flag);
 #endif
 		if(sd) {
+			uint16 rskill;/* redirect skill */
 			//Damage bonuses
 			if ((i = pc_skillatk_bonus(sd, skill_id)))
 				ad.damage += ad.damage*i/100;
-			
-			if( (i = battle_adjust_skill_damage(src->m,skill_id)) )
+			switch(skill_id){
+				case WL_CHAINLIGHTNING_ATK:
+					rskill = WL_CHAINLIGHTNING;
+					break;
+				case AB_DUPLELIGHT_MAGIC:
+					rskill = AB_DUPLELIGHT;
+					break;
+				case WL_TETRAVORTEX_FIRE:
+				case WL_TETRAVORTEX_WATER:
+				case WL_TETRAVORTEX_WIND:
+				case WL_TETRAVORTEX_GROUND:
+					rskill = WL_TETRAVORTEX;
+					break;
+				case WL_SUMMON_ATK_FIRE:
+				case WL_SUMMON_ATK_WIND:
+				case WL_SUMMON_ATK_WATER:
+				case WL_SUMMON_ATK_GROUND:
+					rskill = WL_RELEASE;
+					break;
+				case WM_REVERBERATION_MAGIC:
+					rskill = WM_REVERBERATION;
+					break;
+				default:
+					rskill = skill_id;
+			}
+			if((i = battle_adjust_skill_damage(src->m,rskill)))
 				MATK_RATE(i);
 
 			//Ignore Defense?
@@ -3843,10 +3870,18 @@ struct Damage battle_calc_misc_attack(struct block_list *src,struct block_list *
 	}
 #endif
     md.damage = battle_calc_cardfix(BF_MISC, src, target, nk, s_ele, 0, md.damage, 0, md.flag);
-
-	if (sd && (i = pc_skillatk_bonus(sd, skill_id)))
-		md.damage += md.damage*i/100;
-
+	if(skill_id){
+		uint16 rskill;/* redirect skill id */
+		switch(skill_id){
+			case GN_HELLS_PLANT_ATK:
+				rskill = GN_HELLS_PLANT;
+				break;
+			default:
+				rskill = skill_id;
+		}
+		if(sd && (i = pc_skillatk_bonus(sd, rskill)))
+			md.damage += md.damage*i/100;
+	}
 	if((i = battle_adjust_skill_damage(src->m,skill_id)))
 		md.damage = md.damage * i / 100;
 
@@ -4532,6 +4567,11 @@ struct Damage battle_calc_weapon_attack(struct block_list *src,struct block_list
 				ATK_ADDRATE(30 * tsc->data[SC_DARKCROW]->val1); // 30% de dano corpo a corpo a cada nível da habilidade
 		}
 
+		if(sc && !skill_id && sc->data[SC_EXEEDBREAK]) {
+			ATK_ADDRATE(sc->data[SC_EXEEDBREAK]->val1);
+			status_change_end(src, SC_EXEEDBREAK, INVALID_TIMER);
+		}
+
 	#if VERSION == 1
 			if(sd && skill_id == NJ_KUNAI) {
 				flag.tdef = 1;
@@ -4683,9 +4723,43 @@ struct Damage battle_calc_weapon_attack(struct block_list *src,struct block_list
 					ATK_ADDRATE(50);
 				break;
 		}
-
-		if( (i = battle_adjust_skill_damage(src->m,skill_id)) )
+		if(skill_id){
+			uint16 rskill;/* redirect skill id */
+			switch(skill_id){
+				case AB_DUPLELIGHT_MELEE:
+					rskill = AB_DUPLELIGHT;
+					break;
+				case LG_OVERBRAND_BRANDISH:
+				case LG_OVERBRAND_PLUSATK:
+					rskill = LG_OVERBRAND;
+					break;
+				case WM_SEVERE_RAINSTORM_MELEE:
+					rskill = WM_SEVERE_RAINSTORM;
+					break;
+				case WM_REVERBERATION_MELEE:
+					rskill = WM_REVERBERATION;
+					break;
+				case GN_CRAZYWEED_ATK:
+					rskill = GN_CRAZYWEED;
+					break;
+				case GN_SLINGITEM_RANGEMELEEATK:
+					rskill = GN_SLINGITEM;
+					break;
+				case RL_R_TRIP_PLUSATK:
+					rskill = RL_R_TRIP;
+					break;
+				case RL_B_FLICKER_ATK:
+					rskill = RL_FLICKER;
+					break;
+				case RL_GLITTERING_GREED_ATK:
+					rskill = RL_GLITTERING_GREED;
+					break;
+				default:
+					rskill = skill_id;
+			}
+			if((i = battle_adjust_skill_damage(src->m,rskill)))
 			ATK_RATE(i);
+		}
 
 		if(sd) {
 			if(skill_id && (i = pc_skillatk_bonus(sd, skill_id)))
@@ -5519,10 +5593,6 @@ enum damage_lv battle_weapon_attack(struct block_list *src, struct block_list *t
 	wd = battle_calc_attack(BF_WEAPON, src, target, 0, 0, flag);
 
 	if(sc && sc->count) {
-		if(sc->data[SC_EXEEDBREAK]) {
-			ATK_RATER(sc->data[SC_EXEEDBREAK]->val1);
-			status_change_end(src, SC_EXEEDBREAK, INVALID_TIMER);
-		}
 		if(sc->data[SC_SPELLFIST]) {
 			if(--(sc->data[SC_SPELLFIST]->val1) >= 0) {
 				struct Damage ad = battle_calc_attack(BF_MAGIC,src,target,sc->data[SC_SPELLFIST]->val3,sc->data[SC_SPELLFIST]->val4,flag|BF_SHORT);
@@ -6120,7 +6190,7 @@ bool battle_check_range(struct block_list *src, struct block_list *bl, int range
 #ifndef CIRCULAR_AREA
 	if(src->type == BL_PC) {   // Range for players' attacks and skills should always have a circular check. [Angezerus]
 		int dx = src->x - bl->x, dy = src->y - bl->y;
-		if(!check_distance(dx, dy, range))
+		if(!path->check_distance(dx, dy, range))
 			return false;
 	} else
 #endif
@@ -6133,7 +6203,7 @@ bool battle_check_range(struct block_list *src, struct block_list *bl, int range
 	if(d > AREA_SIZE)
 		return false; // Avoid targetting objects beyond your range of sight.
 
-	return path_search_long(NULL,src->m,src->x,src->y,bl->x,bl->y,CELL_CHKWALL);
+	return path->search_long(NULL, src->m, src->x, src->y, bl->x, bl->y, CELL_CHKWALL);
 }
 
 static const struct _battle_data {

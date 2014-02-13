@@ -54,6 +54,8 @@
 
 struct status_interface status_s;
 
+struct script_code *sc_script[SC_MAX];
+
 /**
  * Returns the status change associated with a skill.
  * @param skill The skill to look up
@@ -1278,10 +1280,17 @@ int status_damage(struct block_list *src,struct block_list *target,int64 in_hp, 
 	st->sp-= sp;
 
 	if(sc && hp && st->hp) {
+#if VERSION == -1
+		if(pc_checkskill(BL_CAST(BL_PC,target), SM_AUTOBERSERK) > 0 &&
+			(!sc->data[SC_PROVOKE] || !sc->data[SC_PROVOKE]->val2) &&
+			st->hp < st->max_hp>>2)
+			sc_start4(target,SC_PROVOKE,100,10,1,0,0,0);
+#else
 		if (sc->data[SC_AUTOBERSERK] &&
 			(!sc->data[SC_PROVOKE] || !sc->data[SC_PROVOKE]->val2) &&
 			st->hp < st->max_hp>>2)
 			sc_start4(target,SC_PROVOKE,100,10,1,0,0,0);
+#endif
 		if(sc->data[SC_BERSERK] && st->hp <= 100)
 			status_change_end(target, SC_BERSERK, INVALID_TIMER);
 		if(sc->data[SC_RAISINGDRAGON] && st->hp <= 1000)
@@ -1294,8 +1303,8 @@ int status_damage(struct block_list *src,struct block_list *target,int64 in_hp, 
 		case BL_PC:  pc_damage((TBL_PC *)target,src,hp,sp); break;
 		case BL_MOB: mob->damage((TBL_MOB *)target, src, hp); break;
 		case BL_HOM: homun->damaged((TBL_HOM *)target); break;
-		case BL_MER: mercenary_heal((TBL_MER *)target,hp,sp); break;
-		case BL_ELEM: elemental_heal((TBL_ELEM *)target,hp,sp); break;
+		case BL_MER: mercenary->heal((TBL_MER *)target, hp, sp); break;
+		case BL_ELEM: elemental->heal((TBL_ELEM *)target, hp, sp); break;
 	}
 
 	if(src && target->type == BL_PC && (((TBL_PC *)target)->disguise) > 0) { // stop walking when attacked in disguise to prevent walk-delay bug
@@ -1319,8 +1328,8 @@ int status_damage(struct block_list *src,struct block_list *target,int64 in_hp, 
 		case BL_PC:  flag = pc_dead((TBL_PC *)target,src); break;
 		case BL_MOB: flag = mob->dead((TBL_MOB *)target, src, flag & 4 ? 3 : 0); break;
 		case BL_HOM: flag = homun->dead((TBL_HOM *)target); break;
-		case BL_MER: flag = mercenary_dead((TBL_MER *)target); break;
-		case BL_ELEM: flag = elemental_dead((TBL_ELEM *)target); break;
+		case BL_MER: flag = mercenary->dead((TBL_MER *)target); break;
+		case BL_ELEM: flag = elemental->dead((TBL_ELEM *)target); break;
 		default:    //Unhandled case, do nothing to object.
 			flag = 0;
 			break;
@@ -1457,7 +1466,11 @@ int status_heal(struct block_list *bl,int64 in_hp,int64 in_sp, int flag) {
 	st->sp+= sp;
 
 	if( hp && sc
+#if VERSION == -1
+		&& pc_checkskill(BL_CAST(BL_PC,bl), SM_AUTOBERSERK) > 0
+#else
 	    && sc->data[SC_AUTOBERSERK]
+#endif
 	    && sc->data[SC_PROVOKE]
 	    && sc->data[SC_PROVOKE]->val2==1
 	    && st->hp>=st->max_hp>>2
@@ -1469,8 +1482,8 @@ int status_heal(struct block_list *bl,int64 in_hp,int64 in_sp, int flag) {
 		case BL_PC:  pc_heal((TBL_PC *)bl,hp,sp,flag&2?1:0); break;
 		case BL_MOB: mob->heal((TBL_MOB *)bl, hp); break;
 		case BL_HOM: homun->healed((TBL_HOM *)bl); break;
-		case BL_MER: mercenary_heal((TBL_MER *)bl,hp,sp); break;
-		case BL_ELEM: elemental_heal((TBL_ELEM *)bl,hp,sp); break;
+		case BL_MER: mercenary->heal((TBL_MER *)bl,hp,sp); break;
+		case BL_ELEM: elemental->heal((TBL_ELEM *)bl, hp, sp); break;
 	}
 
 	return (int)(hp+sp);
@@ -2774,8 +2787,8 @@ int status_calc_pc_(struct map_session_data* sd, enum e_status_calc_opt opt) {
 	}
 
 	for(index=0; index < SC_MAX; ++index)
-		if(sd && (sc->count && sc->data[index]) && sc_script[index].script)
-			script->run(sc_script[index].script,0,sd->bl.id,npc->fake_nd->bl.id);
+		if(sd && (sc->count && sc->data[index]) && sc_script[index])
+			script->run(sc_script[index],0,sd->bl.id,npc->fake_nd->bl.id);
 
 	if(sd->pd) { // Pet Bonus
 		struct pet_data *pd = sd->pd;
@@ -6143,10 +6156,10 @@ void status_set_viewdata(struct block_list *bl, int class_)
 		vd = npc->get_viewdata(class_);
 	else if(homdb_checkid(class_))
 		vd = homun->get_viewdata(class_);
-	else if(merc_class(class_))
-		vd = merc_get_viewdata(class_);
-	else if(elemental_class(class_))
-		vd = elemental_get_viewdata(class_);
+	else if(mercenary->class(class_))
+		vd = mercenary->get_viewdata(class_);
+	else if(elemental->class(class_))
+		vd = elemental->get_viewdata(class_);
 	else
 		vd = NULL;
 
@@ -8405,7 +8418,7 @@ int status_change_start(struct block_list* bl,enum sc_type type,int rate,int val
 					if(pc_isfalcon(sd)) pc_setoption(sd, sd->sc.option&~OPTION_FALCON);
 					if(sd->status.pet_id > 0) pet_menu(sd, 3);
 					if(homun_alive(sd->hd)) homun->vaporize(sd,HOM_ST_REST);
-					if(sd->md) merc_delete(sd->md,3);
+					if (sd->md) mercenary->delete(sd->md, 3);
 				}
 				break;
 			case SC__LAZINESS:
@@ -8550,12 +8563,12 @@ int status_change_start(struct block_list* bl,enum sc_type type,int rate,int val
 				tick = -1; //endless duration in the client
 				break;
 			case SC_EXEEDBREAK:
-				val1 *= 150; // 150 * skill_lv
-				if(sd && sd->inventory_data[sd->equip_index[EQI_HAND_R]]) {    // Chars.
-					val1 += (sd->inventory_data[sd->equip_index[EQI_HAND_R]]->weight/10 * sd->inventory_data[sd->equip_index[EQI_HAND_R]]->wlv * status_get_lv(bl) / 100);
-					val1 += 15 * (sd ? sd->status.job_level:50) + 100;
-				} else // Mobs
-					val1 += (400 * status->get_lv(bl) / 100) + (15 * (status->get_lv(bl) / 2)); // About 1138% at mob_lvl 99. Is an aproximation to a standard weapon. [pakpil]
+				if(sd) {
+					short index = sd->equip_index[EQI_HAND_R];
+					val1 = 15 * (sd->status.job_level + val1 * 10);
+					if(index >= 0 && sd->inventory_data[index] && sd->inventory_data[index]->type == IT_WEAPON)
+						val1 += (sd->inventory_data[index]->weight / 10 * sd->inventory_data[index]->wlv) * status->get_lv(bl) / 100;
+				}
 				break;
 			case SC_PRESTIGE:   // Bassed on suggested formula in iRO Wiki and some test, still need more test. [pakpil]
 				val2 = ((st->int_ + st->luk) / 6) + 5;  // Chance to evade magic damage.
@@ -9270,7 +9283,7 @@ int status_change_start(struct block_list* bl,enum sc_type type,int rate,int val
 	if(calc_flag)
 		status_calc_bl(bl,calc_flag);
 	
-	if(sd && sc_script[type].script)
+	if(sd && sc_script[type])
 		status_calc_pc(sd, 0);
 
 	if(sd && sd->pd)
@@ -10098,7 +10111,7 @@ int status_change_end_(struct block_list *bl, enum sc_type type, int tid, const 
 	if(calc_flag)
 		status_calc_bl(bl,calc_flag);
 
-	if(sd && sc_script[type].script)
+	if(sd && sc_script[type])
 		status_calc_pc(sd,0);
 
 	if(opt_flag&4) //Out of hiding, invoke on place.
@@ -11442,6 +11455,8 @@ int status_natural_heal(struct block_list* bl, va_list args) {
 
 	if(flag&RGN_SHP) {
 		//Skill HP regen
+		if( pc_checkskill(sd, SM_RECOVERY) && (vd = status_get_viewdata(bl)) && vd->dead_sit == 2)
+			sregen->rate.hp = 2;
 		sregen->tick.hp += status->natural_heal_diff_tick * sregen->rate.hp;
 
 		while(sregen->tick.hp >= (unsigned int)battle_config.natural_heal_skill_interval) {
@@ -11674,11 +11689,11 @@ int status_readdb(void)
 
 void sc_script_free(void)
 {
-	size_t i;
+	int i;
 	
 	for(i = 0; i < SC_MAX; ++i)
-		if(sc_script[i].script)
-			script->free_code(sc_script[i].script);
+		if(sc_script[i])
+			script->free_code(sc_script[i]);
 }
 
 void read_buffspecial_db(void) { //brAthena
@@ -11702,9 +11717,11 @@ void read_buffspecial_db(void) { //brAthena
 			ShowWarning(read_message("Source.map.status_buffspecial"), CL_WHITE, res[0], CL_RESET);
 			continue;
 		}
-
-		if(!(sc_script[type].script = script->parse((const char *)res[1], get_database_name(61), type, 0)))
+		
+		if(res[1] == NULL)
 			continue;
+			
+		sc_script[type] = script->parse((const char *)res[1], get_database_name(61), type, 0);
 		sc++;
 	}
 	

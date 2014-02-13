@@ -2282,6 +2282,9 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 			linkdb_final(&script->syntax.curly[i].case_label);
 #ifdef ENABLE_CASE_CHECK
 	script->local_casecheck.clear();
+	script->parser_current_src = NULL;
+	script->parser_current_file = NULL;
+	script->parser_current_line = 0;
 #endif
 		return NULL;
 	}
@@ -2299,6 +2302,9 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 			script->buf  = NULL;
 #ifdef ENABLE_CASE_CHECK
 	script->local_casecheck.clear();
+	script->parser_current_src = NULL;
+	script->parser_current_file = NULL;
+	script->parser_current_line = 0;
 #endif
 			return NULL;
 		}
@@ -2316,6 +2322,9 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 			script->buf  = NULL;
 #ifdef ENABLE_CASE_CHECK
 	script->local_casecheck.clear();
+	script->parser_current_src = NULL;
+	script->parser_current_file = NULL;
+	script->parser_current_line = 0;
 #endif
 			return NULL;
 		}
@@ -2430,6 +2439,9 @@ struct script_code *parse_script(const char *src,const char *file,int line,int o
 	code->script_vars = NULL;
 #ifdef ENABLE_CASE_CHECK
 	script->local_casecheck.clear();
+	script->parser_current_src = NULL;
+	script->parser_current_file = NULL;
+	script->parser_current_line = 0;
 #endif
 	return code;
 }
@@ -2606,7 +2618,7 @@ void *get_val2(struct script_state *st, int64 uid, struct DBMap **ref)
  **/
 void script_array_ensure_zero(struct script_state *st, struct map_session_data *sd, int64 uid, struct DBMap** ref) {
 	const char *name = script->get_str(script_getvarid(uid));
-	struct DBMap *src = script->array_src(st, sd ? sd : st->rid ? map_id2sd(st->rid) : NULL, name);\
+	struct DBMap *src = script->array_src(st, sd ? sd : st->rid ? map_id2sd(st->rid) : NULL, name, ref);\
 	struct script_array *sa = NULL;
 	bool insert = false;
 
@@ -2646,9 +2658,9 @@ void script_array_ensure_zero(struct script_state *st, struct map_session_data *
 /**
  * Returns array size by ID
  **/
-unsigned int script_array_size(struct script_state *st, struct map_session_data *sd, const char *name) {
+unsigned int script_array_size(struct script_state *st, struct map_session_data *sd, const char *name, struct DBMap **ref) {
 	struct script_array *sa = NULL;
-	struct DBMap *src = script->array_src(st, sd, name);
+	struct DBMap *src = script->array_src(st, sd, name, ref);
 
 	if(src)
 		sa = idb_get(src, script->search_str(name));
@@ -2658,15 +2670,15 @@ unsigned int script_array_size(struct script_state *st, struct map_session_data 
 /**
  * Returns array's highest key (for that awful getarraysize implementation that doesn't really gets the array size)
  **/
-unsigned int script_array_highest_key(struct script_state *st, struct map_session_data *sd, const char *name) {
+unsigned int script_array_highest_key(struct script_state *st, struct map_session_data *sd, const char *name, struct DBMap **ref) {
 	struct script_array *sa = NULL;
-	struct DBMap *src = script->array_src(st, sd, name);
+	struct DBMap *src = script->array_src(st, sd, name, ref);
 
 
 	if(src) {
 		int key = script->add_word(name);
 
-		script->array_ensure_zero(st,sd,reference_uid(key, 0),NULL);
+		script->array_ensure_zero(st,sd,reference_uid(key, 0),ref);
 
 		if((sa = idb_get(src, key))) {
 			unsigned int i, highest_key = 0;
@@ -2738,7 +2750,7 @@ void script_array_add_member(struct script_array *sa, unsigned int idx) {
  * Obtains the source of the array database for this type and scenario
  * Initializes such database when not yet initialised.
  **/
-struct DBMap *script_array_src(struct script_state *st, struct map_session_data *sd, const char *name) {
+struct DBMap *script_array_src(struct script_state *st, struct map_session_data *sd, const char *name, struct DBMap **ref) {
 	struct DBMap **src = NULL;
 
 	switch(name[0]) {
@@ -2752,7 +2764,10 @@ struct DBMap *script_array_src(struct script_state *st, struct map_session_data 
 			src = &mapreg->array_db;
 			break;
 		case '.':/* npc/script */
-			src = (name[1] == '@') ? &st->stack->array_function_db : &st->script->script_arrays_db;
+			if(ref)
+				src = (struct DBMap **)((char *)ref + sizeof(struct DBMap *));
+			else
+				src = (name[1] == '@') ? &st->stack->array_function_db : &st->script->script_arrays_db;
 			break;
 		case '\'':/* instance */
 			if(st->instance_id >= 0) {
@@ -4052,7 +4067,7 @@ void script_cleararray_pc(struct map_session_data *sd, const char *varname, void
 
 	key = script->add_str(varname);
 
-	if(!(src = script->array_src(NULL,sd,varname)))
+	if(!(src = script->array_src(NULL,sd,varname,NULL)))
 		return;
 
 	if(value)
@@ -4272,7 +4287,6 @@ void do_final_script(void) {
 
 	if(script->generic_ui_array)
 		aFree(script->generic_ui_array);
-	return;
 }
 /*==========================================
  * Initialization
@@ -4316,8 +4330,6 @@ int script_reload(void) {
 	script->userfunc_db->clear(script->userfunc_db, script->db_free_code_sub);
 	script->label_count = 0;
 
-	// @commands (script based)
-	// Clear bindings
 	for(i = 0; i < atcommand->binding_count; i++) {
 		aFree(atcommand->binding[i]);
 	}
@@ -5727,7 +5739,7 @@ BUILDIN_FUNC(getarraysize)
 		return 1;// not a variable
 	}
 
-	script_pushint(st, script->array_highest_key(st,st->rid ? script->rid2sd(st) : NULL,reference_getname(data)));
+	script_pushint(st, script->array_highest_key(st,st->rid ? script->rid2sd(st) : NULL,reference_getname(data),reference_getref(data)));
 	return 0;
 }
 int script_array_index_cmp(const void *a, const void *b) {
@@ -5768,7 +5780,7 @@ BUILDIN_FUNC(deletearray)
 			return 0;// no player attached
 	}
 
-	if(!(src = script->array_src(st,sd,name))) {
+	if(!(src = script->array_src(st,sd,name, reference_getref(data)))) {
 		ShowError("script:deletearray: not a array\n");
 		script->reportdata(data);
 		st->state = END;
@@ -5778,10 +5790,10 @@ BUILDIN_FUNC(deletearray)
 	script->array_ensure_zero(st,NULL,data->u.num,reference_getref(data));
 
 	if(!(sa = idb_get(src, id))) { /* non-existent array, nothing to empty */
-		return 1;// not a variable
+		return 0;// not a variable
 	}
 
-	end = script->array_highest_key(st,sd,name);
+	end = script->array_highest_key(st,sd,name,reference_getref(data));
 
 	if(start >= end)
 		return 0;// nothing to free
@@ -6151,8 +6163,8 @@ BUILDIN_FUNC(checkweight2)
 		script_pushint(st,0);
 		return 1;// not supported
 	}
-	nb_it = script->array_highest_key(st,sd,reference_getname(data_it));
-	nb_nb = script->array_highest_key(st,sd,reference_getname(data_nb));
+	nb_it = script->array_highest_key(st,sd,reference_getname(data_it),reference_getref(data_it));
+	nb_nb = script->array_highest_key(st,sd,reference_getname(data_nb),reference_getref(data_nb));
 	if(nb_it != nb_nb) {
 		ShowError("Size mistmatch: nb_it=%d, nb_nb=%d\n",nb_it,nb_nb);
 		fail = 1;
@@ -7515,15 +7527,17 @@ BUILDIN_FUNC(getequippercentrefinery)
 /*==========================================
  * Refine +1 item at pos and log and display refine
  *------------------------------------------*/
-BUILDIN_FUNC(successrefitem)
-{
-	int i=-1,num,ep;
+BUILDIN_FUNC(successrefitem) {
+	int i = -1 , num, ep, up = 1;
 	TBL_PC *sd;
 
 	num = script_getnum(st,2);
 	sd = script->rid2sd(st);
 	if(sd == NULL)
 		return 0;
+
+	if(script_hasdata(st, 3))
+		up = script_getnum(st, 3);
 
 	if(num > 0 && num <= ARRAYLENGTH(script->equip))
 		i=pc_checkequip(sd,script->equip[num-1]);
@@ -7536,7 +7550,8 @@ BUILDIN_FUNC(successrefitem)
 		if (sd->status.inventory[i].refine >= MAX_REFINE)
 			return 0;
 
-		sd->status.inventory[i].refine++;
+		sd->status.inventory[i].refine += up;
+		sd->status.inventory[i].refine = cap_value(sd->status.inventory[i].refine, 0, MAX_REFINE);
 		pc_unequipitem(sd,i,2); // status calc will happen in pc_equipitem() below
 
 		clif_refine(sd->fd,0,i,sd->status.inventory[i].refine);
@@ -12761,11 +12776,11 @@ BUILDIN_FUNC(getmercinfo)
 			else
 				script_pushconststr(st,"");
 			break;
-		case 3: script_pushint(st,md ? mercenary_get_faith(md) : 0); break;
-		case 4: script_pushint(st,md ? mercenary_get_calls(md) : 0); break;
-		case 5: script_pushint(st,md ? md->mercenary.kill_count : 0); break;
-		case 6: script_pushint(st,md ? mercenary_get_lifetime(md) : 0); break;
-		case 7: script_pushint(st,md ? md->db->lv : 0); break;
+		case 3: script_pushint(st, md ? mercenary->get_faith(md) : 0); break;
+		case 4: script_pushint(st, md ? mercenary->get_calls(md) : 0); break;
+		case 5: script_pushint(st, md ? md->mercenary.kill_count : 0); break;
+		case 6: script_pushint(st, md ? mercenary->get_lifetime(md) : 0); break;
+		case 7: script_pushint(st, md ? md->db->lv : 0); break;
 		default:
 			ShowError("buildin_getmercinfo: Invalid type %d (char_id=%d).\n", type, sd->status.char_id);
 			script_pushnil(st);
@@ -13818,7 +13833,7 @@ BUILDIN_FUNC(implode)
 	}
 
 	//count chars
-	array_size = script->array_highest_key(st,sd,name) - 1;
+	array_size = script->array_highest_key(st,sd,name,reference_getref(data)) - 1;
 
 	if(array_size == -1) { //empty array check (AmsTaff)
 		ShowWarning("script:implode: array length = 0\n");
@@ -14023,6 +14038,15 @@ BUILDIN_FUNC(sscanf)
 	argc = script_lastdata(st)-3;
 
 	len = strlen(format);
+
+	if(len != 0 && strlen(str) == 0) {
+		// If the source string is empty but the format string is not, we return -1
+		// according to the C specs. (if the format string is also empty, we shall
+		// continue and return 0: 0 conversions took place out of the 0 attempted.)
+		script_pushint(st, -1);
+		return 0;
+	}
+
 	CREATE(buf, char, len*2+1);
 
 	// Issue sscanf for each parameter
@@ -14345,6 +14369,27 @@ BUILDIN_FUNC(atoi)
 	const char *value;
 	value = script_getstr(st,2);
 	script_pushint(st,atoi(value));
+	return 0;
+}
+
+BUILDIN_FUNC(axtoi) {
+	const char *hex = script_getstr(st,2);
+	long value = strtol(hex, NULL, 16);
+#if LONG_MAX > INT_MAX || LONG_MIN < INT_MIN
+	value = cap_value(value, INT_MIN, INT_MAX);
+#endif
+	script_pushint(st, (int)value);
+	return 0;
+}
+
+BUILDIN_FUNC(strtol) {
+	const char *string = script_getstr(st, 2);
+	int base = script_getnum(st, 3);
+	long value = strtol(string, NULL, base);
+#if LONG_MAX > INT_MAX || LONG_MIN < INT_MIN
+	value = cap_value(value, INT_MIN, INT_MAX);
+#endif
+	script_pushint(st, (int)value);
 	return 0;
 }
 
@@ -15068,47 +15113,6 @@ BUILDIN_FUNC(searchitem)
 	return 0;
 }
 
-int axtoi(const char *hexStg)
-{
-	int n = 0;         // position in string
-	int16 m = 0;         // position in digit[] to shift
-	int count;         // loop index
-	int intValue = 0;  // integer value of hex string
-	int digit[11];      // hold values to convert
-	while(n < 10) {
-		if(hexStg[n]=='\0')
-			break;
-		if(hexStg[n] > 0x29 && hexStg[n] < 0x40)   //if 0 to 9
-			digit[n] = hexStg[n] & 0x0f;            //convert to int
-		else if(hexStg[n] >='a' && hexStg[n] <= 'f')  //if a to f
-			digit[n] = (hexStg[n] & 0x0f) + 9;      //convert to int
-		else if(hexStg[n] >='A' && hexStg[n] <= 'F')  //if A to F
-			digit[n] = (hexStg[n] & 0x0f) + 9;      //convert to int
-		else break;
-		n++;
-	}
-	count = n;
-	m = n - 1;
-	n = 0;
-	while(n < count) {
-		// digit[n] is value of hex digit at position n
-		// (m << 2) is the number of positions to shift
-		// OR the bits into return value
-		intValue = intValue | (digit[n] << (m << 2));
-		m--;   // adjust the position to set
-		n++;   // next digit to process
-	}
-	return (intValue);
-}
-
-// [Lance] Hex string to integer converter
-BUILDIN_FUNC(axtoi)
-{
-	const char *hex = script_getstr(st,2);
-	script_pushint(st,script->axtoi(hex));
-	return 0;
-}
-
 // [zBuffer] List of player cont commands --->
 BUILDIN_FUNC(rid2name)
 {
@@ -15654,7 +15658,7 @@ BUILDIN_FUNC(openmail)
 	if(sd == NULL)
 		return 0;
 
-	mail_openmail(sd);
+	mail->openmail(sd);
 
 	return 0;
 }
@@ -15739,11 +15743,11 @@ BUILDIN_FUNC(mercenary_create)
 
 	class_ = script_getnum(st,2);
 
-	if(!merc_class(class_))
+	if(!mercenary->class(class_))
 		return 0;
 
 	contract_time = script_getnum(st,3);
-	merc_create(sd, class_, contract_time);
+	mercenary->create(sd, class_, contract_time);
 	return 0;
 }
 
@@ -15890,7 +15894,7 @@ BUILDIN_FUNC(mercenary_set_faith)
 
 	*calls += value;
 	*calls = cap_value(*calls, 0, INT_MAX);
-	if(mercenary_get_guild(sd->md) == guild_id)
+	if(mercenary->get_guild(sd->md) == guild_id)
 		clif_mercenary_updatestatus(sd,SP_MERCFAITH);
 
 	return 0;
@@ -16865,7 +16869,7 @@ BUILDIN_FUNC(buyingstore)
 		return 0;
 	}
 
-	buyingstore_setup(sd, script_getnum(st,2));
+	buyingstore->setup(sd, script_getnum(st, 2));
 	return 0;
 }
 
@@ -16895,7 +16899,7 @@ BUILDIN_FUNC(searchstores)
 		return 1;
 	}
 
-	searchstore_open(sd, uses, effect);
+	searchstore->open(sd, uses, effect);
 	return 0;
 }
 /// Displays a number as large digital clock.
@@ -18720,7 +18724,7 @@ void script_parse_builtin(void) {
 	BUILDIN_DEF(getequiprefinerycnt,"i"),
 	BUILDIN_DEF(getequipweaponlv,"i"),
 	BUILDIN_DEF(getequippercentrefinery,"i"),
-	BUILDIN_DEF(successrefitem,"i"),
+	BUILDIN_DEF(successrefitem,"i?"),
 	BUILDIN_DEF(failedrefitem,"i"),
 	BUILDIN_DEF(downrefitem,"i?"),
 	BUILDIN_DEF(statusup,"i"),
@@ -18977,6 +18981,7 @@ void script_parse_builtin(void) {
 	BUILDIN_DEF(query_logsql,"s*"),
 	BUILDIN_DEF(escape_sql,"v"),
 	BUILDIN_DEF(atoi,"s"),
+	BUILDIN_DEF(strtol,"si"),
 	// [zBuffer] List of player cont commands --->
 	BUILDIN_DEF(rid2name,"i"),
 	BUILDIN_DEF(pcfollow,"ii"),
@@ -19364,7 +19369,6 @@ void script_defaults(void) {
 	script->playbgm_foreachpc_sub = playBGM_foreachpc_sub;
 	script->soundeffect_sub = soundeffect_sub;
 	script->buildin_query_sql_sub = buildin_query_sql_sub;
-	script->axtoi = axtoi;
 	script->buildin_instance_warpall_sub = buildin_instance_warpall_sub;
 	script->buildin_mobuseskill_sub = buildin_mobuseskill_sub;
 	script->cleanfloor_sub = script_cleanfloor_sub;

@@ -35,8 +35,9 @@ struct eri;
  **/
 // TODO: Remove temporary code
 #define ENABLE_CASE_CHECK
-#define DeprecationWarning(func, bad, good, file, line) ShowError("%s: use of deprecated keyword '%s' (use '%s' instead) in file '%s', line '%d'.\n", (func), (bad), (good), (file), (line));
-#define DeprecationWarning2(func, bad, good, where) ShowError("%s: detected possible use of wrong case in a script. Found '%s', probably meant to be '%s' (in '%s').\n", (func), (bad), (good), (where));
+#define get_script_source(source) ((source) ? (source) : "Unknown (Possibly source or variables stored in database")
+#define DeprecationWarning(func, bad, good, file, line) ShowError("%s: use of deprecated keyword '%s' (use '%s' instead) in file '%s', line '%d'.\n", (func), (bad), (good), get_script_source(file), (line));
+#define DeprecationWarning2(func, bad, good, where) ShowError("%s: detected possible use of wrong case in a script. Found '%s', probably meant to be '%s' (in '%s').\n", (func), (bad), (good), get_script_source(where));
 #define disp_deprecation_message(func, good, p) disp_warning_message(func": use of deprecated keyword (use '"good"' instead).", (p));
 
 #define NUM_WHISPER_VAR 10
@@ -450,9 +451,6 @@ struct str_data_struct {
 	int next;
 };
 
-#ifdef BETA_THREAD_TEST
-void queryThread_log(char *entry, int length);
-#endif
 struct script_label_entry {
 	int key,pos;
 };
@@ -682,7 +680,6 @@ struct script_interface {
 	int (*playbgm_foreachpc_sub) (struct map_session_data *sd, va_list args);
 	int (*soundeffect_sub) (struct block_list *bl, va_list ap);
 	int (*buildin_query_sql_sub) (struct script_state *st, Sql *handle);
-	int (*axtoi) (const char *hexStg);
 	int (*buildin_instance_warpall_sub) (struct block_list *bl, va_list ap);
 	int (*buildin_mobuseskill_sub) (struct block_list *bl, va_list ap);
 	int (*cleanfloor_sub) (struct block_list *bl, va_list ap);
@@ -696,13 +693,13 @@ struct script_interface {
 	/**
 	 * Array Handling
 	 **/
-	struct DBMap *(*array_src) (struct script_state *st, struct map_session_data *sd, const char *name);
+	struct DBMap *(*array_src) (struct script_state *st, struct map_session_data *sd, const char *name, struct DBMap **ref);
 	void (*array_update) (struct DBMap **src, int64 num, bool empty);
 	void (*array_delete) (struct DBMap *src, struct script_array *sa);
 	void (*array_remove_member) (struct DBMap *src, struct script_array *sa, unsigned int idx);
 	void (*array_add_member) (struct script_array *sa, unsigned int idx);
-	unsigned int (*array_size) (struct script_state *st, struct map_session_data *sd, const char *name);
-	unsigned int (*array_highest_key) (struct script_state *st, struct map_session_data *sd, const char *name);
+	unsigned int (*array_size) (struct script_state *st, struct map_session_data *sd, const char *name, struct DBMap** ref);
+	unsigned int (*array_highest_key) (struct script_state *st, struct map_session_data *sd, const char *name, struct DBMap** ref);
 	int (*array_free_db) (DBKey key, DBData *data, va_list ap);
 	void (*array_ensure_zero) (struct script_state *st, struct map_session_data *sd, int64 uid, struct DBMap** ref);
 	/* */
