@@ -460,7 +460,7 @@ void initChangeTables(void) {
 	set_sc(CASH_ASSUMPTIO       , SC_ASSUMPTIO       , SI_ASSUMPTIO       , SCB_NONE);
 
 	set_sc(ALL_PARTYFLEE        , SC_PARTYFLEE       , SI_PARTYFLEE       , SCB_NONE);
-	set_sc(ALL_ODINS_POWER      , SC_ODINS_POWER     , SI_ODINS_POWER     , SCB_MATK|SCB_BATK|SCB_MDEF|SCB_DEF);
+	set_sc( ALL_ODINS_POWER     , SC_ODINS_POWER     , SI_ODINS_POWER     , SCB_WATK|SCB_MATK|SCB_MDEF|SCB_DEF);
 
 	set_sc(CR_SHRINK            , SC_CR_SHRINK       , SI_CR_SHRINK      , SCB_NONE);
 	set_sc(RG_CLOSECONFINE      , SC_RG_CCONFINE_S   , SI_RG_CCONFINE_S   , SCB_NONE);
@@ -541,7 +541,7 @@ void initChangeTables(void) {
 	set_sc(RK_DRAGONHOWLING     , SC_FEAR              , SI_BLANK             , SCB_FLEE|SCB_HIT);
 	set_sc(RK_DEATHBOUND        , SC_DEATHBOUND        , SI_DEATHBOUND        , SCB_NONE);
 	set_sc(RK_WINDCUTTER        , SC_FEAR              , SI_BLANK             , SCB_FLEE|SCB_HIT);
-	set_sc(RK_DRAGONBREATH      , SC_BURNING           , SI_BLANK             , SCB_MDEF );
+	add_sc(RK_DRAGONBREATH      , SC_BURNING);
 	set_sc(RK_MILLENNIUMSHIELD  , SC_MILLENNIUMSHIELD  , SI_BLANK             , SCB_NONE);
 	set_sc(RK_REFRESH           , SC_REFRESH           , SI_REFRESH           , SCB_NONE);
 	set_sc(RK_GIANTGROWTH       , SC_GIANTGROWTH       , SI_GIANTGROWTH       , SCB_STR);
@@ -1929,6 +1929,9 @@ int status_check_visibility(struct block_list *src, struct block_list *target) {
 	if(src->m != target->m || !check_distance_bl(src, target, view_range))
 		return 0;
 
+	if(src->type == BL_NPC) /* NPCs don't care for the rest */
+		return 1;
+
 	if((tsc = status->get_sc(target))) {
 		struct status_data *st = status->get_status_data(src);
 
@@ -2049,10 +2052,12 @@ unsigned short status_base_atk(const struct block_list *bl, const struct status_
 	return cap_value(str, 0, battle_config.max_atk);
 }
 
+#if VERSION != 1
 static inline unsigned short status_base_matk_min(const struct status_data *st)
 {
 	return st->int_+(st->int_/7)*(st->int_/7);
 }
+#endif
 static inline unsigned short status_base_matk_max(const struct status_data *st)
 {
 	return st->int_+(st->int_/5)*(st->int_/5);
@@ -4635,8 +4640,6 @@ unsigned short status_calc_batk(struct block_list *bl, struct status_change *sc,
 		batk += batk / 5;
 	if(sc->data[SC_FULL_SWING_K])
 		batk += sc->data[SC_FULL_SWING_K]->val1;
-	if(sc->data[SC_ODINS_POWER])
-		batk += 40 + 30 * sc->data[SC_ODINS_POWER]->val1;
 	if(sc->data[SC_VOLCANIC_ASH] && (bl->type==BL_MOB)){
 		if(status_get_element(bl) == ELE_WATER) //water type
 			batk /= 2;
@@ -4755,6 +4758,8 @@ unsigned short status_calc_watk(struct block_list *bl, struct status_change *sc,
 		watk -= watk * sc->data[SC__ENERVATION]->val2 / 100;
 	if(sc->data[SC_RUSH_WINDMILL])
 		watk += sc->data[SC_RUSH_WINDMILL]->val2;
+	if(sc->data[SC_ODINS_POWER])
+		watk += 40 + 30 * sc->data[SC_ODINS_POWER]->val1;
 	if((sc->data[SC_FIRE_INSIGNIA] && sc->data[SC_FIRE_INSIGNIA]->val1 == 2)
 	   || (sc->data[SC_WATER_INSIGNIA] && sc->data[SC_WATER_INSIGNIA]->val1 == 2)
 	   || (sc->data[SC_WIND_INSIGNIA] && sc->data[SC_WIND_INSIGNIA]->val1 == 2)
@@ -9703,7 +9708,7 @@ int status_change_end_(struct block_list *bl, enum sc_type type, int tid, const 
 	if(sce->timer != tid && tid != INVALID_TIMER)
 		return 0;
 
-	if(sd && sce->timer == INVALID_TIMER)
+	if(sd && sce->timer == INVALID_TIMER && !sd->state.loggingout)
 		chrif->del_scdata_single(sd->status.account_id, sd->status.char_id, type);
 
 	if(tid == INVALID_TIMER) {

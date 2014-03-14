@@ -1161,7 +1161,8 @@ bool pc_authok(struct map_session_data *sd, int login_id2, time_t expiration_tim
 	sd->avail_quests = 0;
 	sd->save_quest = false;
 
-	sd->var_db = i64db_alloc(DB_OPT_BASE);
+	sd->regs.vars = i64db_alloc(DB_OPT_BASE);
+	sd->regs.arrays = NULL;
 	sd->vars_dirty = false;
 	sd->vars_ok = false;
 	sd->vars_received = 0x0;
@@ -4238,7 +4239,7 @@ int pc_isUseitem(struct map_session_data *sd,int n)
 		case ITEMID_WOB_LOCAL:    // Blue Butterfly Wing
 		case ITEMID_SIEGE_TELEPORT_SCROLL:
 			if(sd->duel_group && !battle_config.duel_allow_teleport) {
-				clif_displaymessage(sd->fd, msg_txt(663));
+				clif_displaymessage(sd->fd, msg_txt(863)); // "Duel: Can't use this item in duel."
 				return 0;
 			}
 			if(nameid != ITEMID_WING_OF_FLY && nameid != ITEMID_GIANT_FLY_WING && map->list[sd->bl.m].flag.noreturn)
@@ -4464,7 +4465,7 @@ int pc_useitem(struct map_session_data *sd,int n)
 	for(i = 0; i < map->list[sd->bl.m].zone->disabled_items_count; i++) {
 		if(map->list[sd->bl.m].zone->disabled_items[i] == nameid) {
 			clif_msg(sd, ITEM_CANT_USE_AREA); // This item cannot be used within this area
-			if(battle_config.item_restricted_consumption_type && nameid != ITEMID_REINS_OF_MOUNT && nameid != ITEMID_C_WING_OF_FLY) {
+			if(battle_config.item_restricted_consumption_type && nameid != ITEMID_REINS_OF_MOUNT && sd->status.inventory[n].expire_time == 0) {
 				clif_useitemack(sd, n, sd->status.inventory[n].amount - 1, true);
 				pc_delitem(sd, n, 1, 1, 0, LOG_TYPE_CONSUME);
 			}
@@ -5578,222 +5579,230 @@ int pc_mapid2jobid(unsigned short class_, int sex)
  *----------------------------------------------------*/
 const char *job_name(int class_)
 {
-	switch(class_) {
-		case JOB_NOVICE:
-		case JOB_SWORDMAN:
-		case JOB_MAGE:
-		case JOB_ARCHER:
-		case JOB_ACOLYTE:
-		case JOB_MERCHANT:
-		case JOB_THIEF:
-			return msg_txt(550 - JOB_NOVICE+class_);
+	switch (class_) {
+	case JOB_NOVICE:   // 550
+	case JOB_SWORDMAN: // 551
+	case JOB_MAGE:     // 552
+	case JOB_ARCHER:   // 553
+	case JOB_ACOLYTE:  // 554
+	case JOB_MERCHANT: // 555
+	case JOB_THIEF:    // 556
+		return msg_txt(550 - JOB_NOVICE+class_);
 
-		case JOB_KNIGHT:
-		case JOB_PRIEST:
-		case JOB_WIZARD:
-		case JOB_BLACKSMITH:
-		case JOB_HUNTER:
-		case JOB_ASSASSIN:
-			return msg_txt(557 - JOB_KNIGHT+class_);
+	case JOB_KNIGHT:     // 557
+	case JOB_PRIEST:     // 558
+	case JOB_WIZARD:     // 559
+	case JOB_BLACKSMITH: // 560
+	case JOB_HUNTER:     // 561
+	case JOB_ASSASSIN:   // 562
+		return msg_txt(557 - JOB_KNIGHT+class_);
 
-		case JOB_KNIGHT2:
-			return msg_txt(557);
+	case JOB_KNIGHT2:
+		return msg_txt(557);
 
-		case JOB_CRUSADER:
-		case JOB_MONK:
-		case JOB_SAGE:
-		case JOB_ROGUE:
-		case JOB_ALCHEMIST:
-		case JOB_BARD:
-		case JOB_DANCER:
-			return msg_txt(563 - JOB_CRUSADER+class_);
+	case JOB_CRUSADER:  // 563
+	case JOB_MONK:      // 564
+	case JOB_SAGE:      // 565
+	case JOB_ROGUE:     // 566
+	case JOB_ALCHEMIST: // 567
+	case JOB_BARD:      // 568
+	case JOB_DANCER:    // 569
+		return msg_txt(563 - JOB_CRUSADER+class_);
 
-		case JOB_CRUSADER2:
-			return msg_txt(563);
+	case JOB_CRUSADER2:
+		return msg_txt(563);
 
-		case JOB_WEDDING:
-		case JOB_SUPER_NOVICE:
-		case JOB_GUNSLINGER:
-		case JOB_NINJA:
-		case JOB_XMAS:
-			return msg_txt(570 - JOB_WEDDING+class_);
+	case JOB_WEDDING:      // 570
+	case JOB_SUPER_NOVICE: // 571
+	case JOB_GUNSLINGER:   // 572
+	case JOB_NINJA:        // 573
+	case JOB_XMAS:         // 574
+		return msg_txt(570 - JOB_WEDDING+class_);
 
-		case JOB_SUMMER:
-			return msg_txt(621);
+	case JOB_SUMMER:
+		return msg_txt(621);
 			
-		case JOB_HANBOK:
-			return msg_txt(620);
+	case JOB_HANBOK:
+		return msg_txt(620);
 
-		case JOB_NOVICE_HIGH:
-		case JOB_SWORDMAN_HIGH:
-		case JOB_MAGE_HIGH:
-		case JOB_ARCHER_HIGH:
-		case JOB_ACOLYTE_HIGH:
-		case JOB_MERCHANT_HIGH:
-		case JOB_THIEF_HIGH:
-			return msg_txt(575 - JOB_NOVICE_HIGH+class_);
+	case JOB_NOVICE_HIGH:   // 575
+	case JOB_SWORDMAN_HIGH: // 576
+	case JOB_MAGE_HIGH:     // 577
+	case JOB_ARCHER_HIGH:   // 578
+	case JOB_ACOLYTE_HIGH:  // 579
+	case JOB_MERCHANT_HIGH: // 580
+	case JOB_THIEF_HIGH:    // 581
+		return msg_txt(575 - JOB_NOVICE_HIGH+class_);
 
-		case JOB_LORD_KNIGHT:
-		case JOB_HIGH_PRIEST:
-		case JOB_HIGH_WIZARD:
-		case JOB_WHITESMITH:
-		case JOB_SNIPER:
-		case JOB_ASSASSIN_CROSS:
-			return msg_txt(582 - JOB_LORD_KNIGHT+class_);
+	case JOB_LORD_KNIGHT:    // 582
+	case JOB_HIGH_PRIEST:    // 583
+	case JOB_HIGH_WIZARD:    // 584
+	case JOB_WHITESMITH:     // 585
+	case JOB_SNIPER:         // 586
+	case JOB_ASSASSIN_CROSS: // 587
+		return msg_txt(582 - JOB_LORD_KNIGHT+class_);
 
-		case JOB_LORD_KNIGHT2:
-			return msg_txt(582);
+	case JOB_LORD_KNIGHT2:
+		return msg_txt(582);
 
-		case JOB_PALADIN:
-		case JOB_CHAMPION:
-		case JOB_PROFESSOR:
-		case JOB_STALKER:
-		case JOB_CREATOR:
-		case JOB_CLOWN:
-		case JOB_GYPSY:
-			return msg_txt(588 - JOB_PALADIN + class_);
+	case JOB_PALADIN:   // 588
+	case JOB_CHAMPION:  // 589
+	case JOB_PROFESSOR: // 590
+	case JOB_STALKER:   // 591
+	case JOB_CREATOR:   // 592
+	case JOB_CLOWN:     // 593
+	case JOB_GYPSY:     // 594
+		return msg_txt(588 - JOB_PALADIN + class_);
 
-		case JOB_PALADIN2:
-			return msg_txt(588);
+	case JOB_PALADIN2:
+		return msg_txt(588);
 
-		case JOB_BABY:
-		case JOB_BABY_SWORDMAN:
-		case JOB_BABY_MAGE:
-		case JOB_BABY_ARCHER:
-		case JOB_BABY_ACOLYTE:
-		case JOB_BABY_MERCHANT:
-		case JOB_BABY_THIEF:
-			return msg_txt(595 - JOB_BABY + class_);
+	case JOB_BABY:          // 595
+	case JOB_BABY_SWORDMAN: // 596
+	case JOB_BABY_MAGE:     // 597
+	case JOB_BABY_ARCHER:   // 598
+	case JOB_BABY_ACOLYTE:  // 599
+	case JOB_BABY_MERCHANT: // 600
+	case JOB_BABY_THIEF:    // 601
+		return msg_txt(595 - JOB_BABY + class_);
 
-		case JOB_BABY_KNIGHT:
-		case JOB_BABY_PRIEST:
-		case JOB_BABY_WIZARD:
-		case JOB_BABY_BLACKSMITH:
-		case JOB_BABY_HUNTER:
-		case JOB_BABY_ASSASSIN:
-			return msg_txt(602 - JOB_BABY_KNIGHT + class_);
+	case JOB_BABY_KNIGHT:     // 602
+	case JOB_BABY_PRIEST:     // 603
+	case JOB_BABY_WIZARD:     // 604
+	case JOB_BABY_BLACKSMITH: // 605
+	case JOB_BABY_HUNTER:     // 606
+	case JOB_BABY_ASSASSIN:   // 607
+		return msg_txt(602 - JOB_BABY_KNIGHT + class_);
 
-		case JOB_BABY_KNIGHT2:
-			return msg_txt(602);
+	case JOB_BABY_KNIGHT2:
+		return msg_txt(602);
 
-		case JOB_BABY_CRUSADER:
-		case JOB_BABY_MONK:
-		case JOB_BABY_SAGE:
-		case JOB_BABY_ROGUE:
-		case JOB_BABY_ALCHEMIST:
-		case JOB_BABY_BARD:
-		case JOB_BABY_DANCER:
-			return msg_txt(608 - JOB_BABY_CRUSADER + class_);
+	case JOB_BABY_CRUSADER:  // 608
+	case JOB_BABY_MONK:      // 609
+	case JOB_BABY_SAGE:      // 610
+	case JOB_BABY_ROGUE:     // 611
+	case JOB_BABY_ALCHEMIST: // 612
+	case JOB_BABY_BARD:      // 613
+	case JOB_BABY_DANCER:    // 614
+		return msg_txt(608 - JOB_BABY_CRUSADER + class_);
 
-		case JOB_BABY_CRUSADER2:
-			return msg_txt(608);
+	case JOB_BABY_CRUSADER2:
+		return msg_txt(608);
 
-		case JOB_SUPER_BABY:
-			return msg_txt(615);
+	case JOB_SUPER_BABY:
+		return msg_txt(615);
 
-		case JOB_TAEKWON:
-			return msg_txt(616);
-		case JOB_STAR_GLADIATOR:
-		case JOB_STAR_GLADIATOR2:
-			return msg_txt(617);
-		case JOB_SOUL_LINKER:
-			return msg_txt(618);
+	case JOB_TAEKWON:
+		return msg_txt(616);
+	case JOB_STAR_GLADIATOR:
+	case JOB_STAR_GLADIATOR2:
+		return msg_txt(617);
+	case JOB_SOUL_LINKER:
+		return msg_txt(618);
 
-		case JOB_GANGSI:
-		case JOB_DEATH_KNIGHT:
-		case JOB_DARK_COLLECTOR:
-			return msg_txt(622 - JOB_GANGSI+class_);
+	case JOB_GANGSI:         // 622
+	case JOB_DEATH_KNIGHT:   // 623
+	case JOB_DARK_COLLECTOR: // 624
+		return msg_txt(622 - JOB_GANGSI+class_);
 
-		case JOB_RUNE_KNIGHT:
-		case JOB_WARLOCK:
-		case JOB_RANGER:
-		case JOB_ARCH_BISHOP:
-		case JOB_MECHANIC:
-		case JOB_GUILLOTINE_CROSS:
-			return msg_txt(625 - JOB_RUNE_KNIGHT+class_);
+	case JOB_RUNE_KNIGHT:      // 625
+	case JOB_WARLOCK:          // 626
+	case JOB_RANGER:           // 627
+	case JOB_ARCH_BISHOP:      // 628
+	case JOB_MECHANIC:         // 629
+	case JOB_GUILLOTINE_CROSS: // 630
+		return msg_txt(625 - JOB_RUNE_KNIGHT+class_);
 
-		case JOB_RUNE_KNIGHT_T:
-		case JOB_WARLOCK_T:
-		case JOB_RANGER_T:
-		case JOB_ARCH_BISHOP_T:
-		case JOB_MECHANIC_T:
-		case JOB_GUILLOTINE_CROSS_T:
-			return msg_txt(681 - JOB_RUNE_KNIGHT_T+class_);
+	case JOB_RUNE_KNIGHT_T:      // 656
+	case JOB_WARLOCK_T:          // 657
+	case JOB_RANGER_T:           // 658
+	case JOB_ARCH_BISHOP_T:      // 659
+	case JOB_MECHANIC_T:         // 660
+	case JOB_GUILLOTINE_CROSS_T: // 661
+            return msg_txt(656 - JOB_RUNE_KNIGHT_T+class_);
 
-		case JOB_ROYAL_GUARD:
-		case JOB_SORCERER:
-		case JOB_MINSTREL:
-		case JOB_WANDERER:
-		case JOB_SURA:
-		case JOB_GENETIC:
-		case JOB_SHADOW_CHASER:
-			return msg_txt(631 - JOB_ROYAL_GUARD+class_);
+	case JOB_ROYAL_GUARD:   // 631
+	case JOB_SORCERER:      // 632
+	case JOB_MINSTREL:      // 633
+	case JOB_WANDERER:      // 634
+	case JOB_SURA:          // 635
+	case JOB_GENETIC:       // 636
+	case JOB_SHADOW_CHASER: // 637
+		return msg_txt(631 - JOB_ROYAL_GUARD+class_);
 
-		case JOB_ROYAL_GUARD_T:
-		case JOB_SORCERER_T:
-		case JOB_MINSTREL_T:
-		case JOB_WANDERER_T:
-		case JOB_SURA_T:
-		case JOB_GENETIC_T:
-		case JOB_SHADOW_CHASER_T:
-			return msg_txt(687 - JOB_ROYAL_GUARD_T+class_);
+	case JOB_ROYAL_GUARD_T:   // 662
+	case JOB_SORCERER_T:      // 663
+	case JOB_MINSTREL_T:      // 664
+	case JOB_WANDERER_T:      // 665
+	case JOB_SURA_T:          // 666
+	case JOB_GENETIC_T:       // 667
+	case JOB_SHADOW_CHASER_T: // 668
+            return msg_txt(662 - JOB_ROYAL_GUARD_T+class_);
 
-		case JOB_RUNE_KNIGHT2:
-		case JOB_RUNE_KNIGHT_T2:
-			return msg_txt(625);
+	case JOB_RUNE_KNIGHT2:
+		return msg_txt(625);
 
-		case JOB_ROYAL_GUARD2:
-		case JOB_ROYAL_GUARD_T2:
-			return msg_txt(631);
+	case JOB_RUNE_KNIGHT_T2:
+		return msg_txt(656);
 
-		case JOB_RANGER2:
-		case JOB_RANGER_T2:
-			return msg_txt(627);
+	case JOB_ROYAL_GUARD2:
+		return msg_txt(631);
 
-		case JOB_MECHANIC2:
-		case JOB_MECHANIC_T2:
-			return msg_txt(629);
+	case JOB_ROYAL_GUARD_T2:
+		return msg_txt(662);
 
-		case JOB_BABY_RUNE:
-		case JOB_BABY_WARLOCK:
-		case JOB_BABY_RANGER:
-		case JOB_BABY_BISHOP:
-		case JOB_BABY_MECHANIC:
-		case JOB_BABY_CROSS:
-		case JOB_BABY_GUARD:
-		case JOB_BABY_SORCERER:
-		case JOB_BABY_MINSTREL:
-		case JOB_BABY_WANDERER:
-		case JOB_BABY_SURA:
-		case JOB_BABY_GENETIC:
-		case JOB_BABY_CHASER:
-			return msg_txt(638 - JOB_BABY_RUNE+class_);
+	case JOB_RANGER2:
+		return msg_txt(627);
 
-		case JOB_BABY_RUNE2:
-			return msg_txt(638);
+	case JOB_RANGER_T2:
+		return msg_txt(658);
 
-		case JOB_BABY_GUARD2:
-			return msg_txt(644);
+	case JOB_MECHANIC2:
+		return msg_txt(629);
 
-		case JOB_BABY_RANGER2:
-			return msg_txt(640);
+	case JOB_MECHANIC_T2:
+		return msg_txt(660);
 
-		case JOB_BABY_MECHANIC2:
-			return msg_txt(642);
+	case JOB_BABY_RUNE:     // 638
+	case JOB_BABY_WARLOCK:  // 639
+	case JOB_BABY_RANGER:   // 640
+	case JOB_BABY_BISHOP:   // 641
+	case JOB_BABY_MECHANIC: // 642
+	case JOB_BABY_CROSS:    // 643
+	case JOB_BABY_GUARD:    // 644
+	case JOB_BABY_SORCERER: // 645
+	case JOB_BABY_MINSTREL: // 646
+	case JOB_BABY_WANDERER: // 647
+	case JOB_BABY_SURA:     // 648
+	case JOB_BABY_GENETIC:  // 649
+	case JOB_BABY_CHASER:   // 650
+		return msg_txt(638 - JOB_BABY_RUNE+class_);
 
-		case JOB_SUPER_NOVICE_E:
-		case JOB_SUPER_BABY_E:
-			return msg_txt(651 - JOB_SUPER_NOVICE_E+class_);
+	case JOB_BABY_RUNE2:
+		return msg_txt(638);
 
-		case JOB_KAGEROU:
-		case JOB_OBORO:
-			return msg_txt(653 - JOB_KAGEROU+class_);
+	case JOB_BABY_GUARD2:
+		return msg_txt(644);
 
-		case JOB_REBELLION:
-			return msg_txt(694);
+	case JOB_BABY_RANGER2:
+		return msg_txt(640);
 
-		default:
-			return msg_txt(655);
+	case JOB_BABY_MECHANIC2:
+		return msg_txt(642);
+
+	case JOB_SUPER_NOVICE_E: // 651
+	case JOB_SUPER_BABY_E:   // 652
+		return msg_txt(651 - JOB_SUPER_NOVICE_E+class_);
+
+	case JOB_KAGEROU: // 653
+	case JOB_OBORO:   // 654
+		return msg_txt(653 - JOB_KAGEROU+class_);
+
+	case JOB_REBELLION:
+		return msg_txt(655);
+
+	default:
+		return msg_txt(619); // "Classe Desconhecida"
 	}
 }
 
@@ -5964,7 +5973,7 @@ int pc_checkjoblevelup(struct map_session_data *sd)
  *------------------------------------------*/
 static void pc_calcexp(struct map_session_data *sd, unsigned int *base_exp, unsigned int *job_exp, struct block_list *src)
 {
-	int bonus = 0;
+	int bonus = 0, vip_exp_base = 0, vip_exp_job = 0;
 	struct status_data *st = status->get_status_data(src);
 
 	if (sd->expaddrace[st->race])
@@ -5982,13 +5991,17 @@ static void pc_calcexp(struct map_session_data *sd, unsigned int *base_exp, unsi
 		else*/
 			bonus += sd->sc.data[SC_CASH_PLUSEXP]->val1;
 	}
+	if(bra_config.enable_system_vip && src && src->type == BL_MOB && pc_isvip(sd)) {
+			vip_exp_base = bra_config.extra_exp_vip_base;
+			vip_exp_job = bra_config.extra_exp_vip_job;
+	}
 
-	*base_exp = (unsigned int) cap_value(*base_exp + (double)*base_exp * bonus/100., 1, UINT_MAX);
+	*base_exp = (unsigned int) cap_value(*base_exp + (double)*base_exp * (bonus + vip_exp_base)/100., 1, UINT_MAX);
 
 	if(sd->sc.data[SC_CASH_PLUSONLYJOBEXP])
 		bonus += sd->sc.data[SC_CASH_PLUSONLYJOBEXP]->val1;
 
-	*job_exp = (unsigned int) cap_value(*job_exp + (double)*job_exp * bonus/100., 1, UINT_MAX);
+	*job_exp = (unsigned int) cap_value(*job_exp + (double)*job_exp * (bonus + vip_exp_job)/100., 1, UINT_MAX);
 
 	return;
 }
@@ -7074,14 +7087,14 @@ int pc_dead(struct map_session_data *sd,struct block_list *src)
 	   && (sd->class_&MAPID_UPPERMASK) != MAPID_NOVICE // only novices will receive no penalty
 	   && !map->list[sd->bl.m].flag.noexppenalty && !map_flag_gvg2(sd->bl.m)
 	   && !sd->sc.data[SC_BABY] && !sd->sc.data[SC_CASH_DEATHPENALTY]) {
-		unsigned int base_penalty =0;
+		unsigned int base_penalty = 0;
 		if(battle_config.ip_exp_bonus) {
 			battle_config.death_penalty_base -= battle_config.ip_exp_penalty;
 			battle_config.death_penalty_job  -= battle_config.ip_exp_penalty;
 		}
 		if(bra_config.enable_system_vip && pc_isvip(sd)) {
-			battle_config.death_penalty_base -= bra_config.penalty_exp_vip;
-			battle_config.death_penalty_job  -= bra_config.penalty_exp_vip;
+			battle_config.death_penalty_base -= bra_config.penalty_exp_vip_base;
+			battle_config.death_penalty_base  -= bra_config.penalty_exp_vip_job;
 		}
 		if(battle_config.death_penalty_base > 0) {
 			switch(battle_config.death_penalty_type) {
@@ -7545,7 +7558,7 @@ void pc_heal(struct map_session_data *sd,unsigned int hp,unsigned int sp, int ty
  *------------------------------------------*/
 int pc_itemheal(struct map_session_data *sd,int itemid, int hp,int sp)
 {
-	int bonus;
+	int bonus, tmp;
 
 	if(hp) {
 		int i;
@@ -7566,8 +7579,10 @@ int pc_itemheal(struct map_session_data *sd,int itemid, int hp,int sp)
 				break;
 			}
 		}
-		if(bonus!=100)
-			hp = hp * bonus / 100;
+
+		tmp = hp*bonus/100;
+		if(bonus != 100 && tmp > hp)
+			hp = tmp;
 
 		// Recovery Potion
 		if(sd->sc.data[SC_HEALPLUS])
@@ -7579,8 +7594,10 @@ int pc_itemheal(struct map_session_data *sd,int itemid, int hp,int sp)
 		        + pc_checkskill(sd,AM_LEARNINGPOTION)*5;
 		if(script->potion_flag > 1)
 			bonus += bonus*(script->potion_flag-1)*50/100;
-		if(bonus != 100)
-			sp = sp * bonus / 100;
+
+		tmp = sp*bonus/100;
+		if(bonus != 100 && tmp > sp)
+			sp = tmp;
 	}
 	if(sd->sc.count) {
 		if(sd->sc.data[SC_CRITICALWOUND]) {
@@ -8148,7 +8165,7 @@ int pc_candrop(struct map_session_data *sd, struct item *item)
  * For '@type' variables (temporary numeric char reg)
  **/
 int pc_readreg(struct map_session_data* sd, int64 reg) {
-	return i64db_iget(sd->var_db, reg);
+	return i64db_iget(sd->regs.vars, reg);
 }
 /**
  * For '@type' variables (temporary numeric char reg)
@@ -8157,13 +8174,13 @@ void pc_setreg(struct map_session_data* sd, int64 reg, int val) {
 	unsigned int index = script_getvaridx(reg);
 
 	if(val) {
-		i64db_iput(sd->var_db, reg, val);
+		i64db_iput(sd->regs.vars, reg, val);
 		if(index)
-			script->array_update(&sd->array_db,reg,false);
+			script->array_update(&sd->regs, reg, false);
 	} else {
-		i64db_remove(sd->var_db, reg);
+		i64db_remove(sd->regs.vars, reg);
 		if(index)
-			script->array_update(&sd->array_db,reg,true);
+			script->array_update(&sd->regs, reg, true);
 	}
 }
 
@@ -8173,7 +8190,7 @@ void pc_setreg(struct map_session_data* sd, int64 reg, int val) {
 char* pc_readregstr(struct map_session_data* sd, int64 reg) {
 	struct script_reg_str *p = NULL;
 
-	p = i64db_get(sd->var_db, reg);
+	p = i64db_get(sd->regs.vars, reg);
 
 	return p ? p->value : NULL;
 }
@@ -8191,23 +8208,23 @@ void pc_setregstr(struct map_session_data* sd, int64 reg, const char* str) {
 		p->value = aStrdup(str);
 		p->flag.type = 1;
 
-		if( sd->var_db->put(sd->var_db,DB->i642key(reg),DB->ptr2data(p),&prev) ) {
+		if(sd->regs.vars->put(sd->regs.vars, DB->i642key(reg), DB->ptr2data(p), &prev)) {
 			p = DB->data2ptr(&prev);
 			if(p->value)
 				aFree(p->value);
 			ers_free(pc_str_reg_ers, p);
 		} else {
 			if(index)
-				script->array_update(&sd->array_db,reg,false);
+				script->array_update(&sd->regs, reg, false);
 		}
 	} else {
-		if(sd->var_db->remove(sd->var_db,DB->i642key(reg),&prev)) {
+		if(sd->regs.vars->remove(sd->regs.vars, DB->i642key(reg), &prev)) {
 			p = DB->data2ptr(&prev);
 			if(p->value)
 				aFree(p->value);
 			ers_free(pc_str_reg_ers, p);
 			if(index)
-				script->array_update(&sd->array_db,reg,true);
+				script->array_update(&sd->regs, reg, true);
 		}
 	}
 }
@@ -8228,7 +8245,7 @@ int pc_readregistry(struct map_session_data *sd, int64 reg) {
 		return 0;
 	}
 
-	p = i64db_get(sd->var_db, reg);
+	p = i64db_get(sd->regs.vars, reg);
 
 	return p ? p->value : 0;
 }
@@ -8249,7 +8266,7 @@ char* pc_readregistry_str(struct map_session_data *sd, int64 reg) {
 		return NULL;
 	}
 
-	p = i64db_get(sd->var_db, reg);
+	p = i64db_get(sd->regs.vars, reg);
 
 	return p ? p->value : NULL;
 }
@@ -8294,15 +8311,15 @@ int pc_setregistry(struct map_session_data *sd, int64 reg, int val) {
 		return 0;
 	}
 
-	if((p = i64db_get(sd->var_db, reg))) {
+	if((p = i64db_get(sd->regs.vars, reg))) {
 		if(val) {
 			if(!p->value && index) /* its a entry that was deleted, so we reset array */
-				script->array_update(&sd->array_db,reg,false);
+				script->array_update(&sd->regs, reg, false);
 			p->value = val;
 		} else {
 			p->value = 0;
 			if(index)
-				script->array_update(&sd->array_db,reg,true);
+				script->array_update(&sd->regs, reg, true);
 		}
 		if(!pc_reg_load)
 			p->flag.update = 1;/* either way, it will require either delete or replace */
@@ -8310,7 +8327,7 @@ int pc_setregistry(struct map_session_data *sd, int64 reg, int val) {
 		DBData prev;
 
 		if(index)
-			script->array_update(&sd->array_db,reg,false);
+			script->array_update(&sd->regs, reg, false);
 
 		p = ers_alloc(pc_num_reg_ers, struct script_reg_num);
 
@@ -8318,7 +8335,7 @@ int pc_setregistry(struct map_session_data *sd, int64 reg, int val) {
 		if(!pc_reg_load)
 			p->flag.update = 1;
 
-		if(sd->var_db->put(sd->var_db,DB->i642key(reg),DB->ptr2data(p),&prev)) {
+		if(sd->regs.vars->put(sd->regs.vars, DB->i642key(reg), DB->ptr2data(p), &prev)) {
 			p = DB->data2ptr(&prev);
 			ers_free(pc_num_reg_ers, p);
 		}
@@ -8345,17 +8362,17 @@ int pc_setregistry_str(struct map_session_data *sd, int64 reg, const char *val) 
 		return 0;
 	}
 
-	if((p = i64db_get(sd->var_db, reg))) {
+	if((p = i64db_get(sd->regs.vars, reg))) {
 		if(val[0]) {
 			if(p->value)
 				aFree(p->value);
 			else if (index) /* a entry that was deleted, so we reset */
-				script->array_update(&sd->array_db,reg,false);
+				script->array_update(&sd->regs, reg, false);
 			p->value = aStrdup(val);
 		} else {
 			p->value = NULL;
 			if(index)
-				script->array_update(&sd->array_db,reg,true);
+				script->array_update(&sd->regs, reg, true);
 		}
 		if(!pc_reg_load)
 			p->flag.update = 1;/* either way, it will require either delete or replace */
@@ -8363,7 +8380,7 @@ int pc_setregistry_str(struct map_session_data *sd, int64 reg, const char *val) 
 		DBData prev;
 
 		if(index)
-			script->array_update(&sd->array_db,reg,false);
+			script->array_update(&sd->regs, reg, false);
 
 		p = ers_alloc(pc_str_reg_ers, struct script_reg_str);
 
@@ -8372,7 +8389,7 @@ int pc_setregistry_str(struct map_session_data *sd, int64 reg, const char *val) 
 			p->flag.update = 1;
 		p->flag.type = 1;
 
-		if(sd->var_db->put(sd->var_db,DB->i642key(reg),DB->ptr2data(p),&prev)) {
+		if(sd->regs.vars->put(sd->regs.vars, DB->i642key(reg), DB->ptr2data(p), &prev)) {
 			p = DB->data2ptr(&prev);
 			if(p->value)
 				aFree(p->value);

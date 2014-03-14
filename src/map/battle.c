@@ -3199,7 +3199,7 @@ void battle_consume_ammo(TBL_PC *sd, int skill_id, int lv) {
 	sd->state.arrow_atk = 0;
 }
 
-	//Skill Range Criteria
+//Skill Range Criteria
 int battle_range_type(struct block_list *src, struct block_list *target, uint16 skill_id, uint16 skill_lv) {
 	if(battle_config.skillrange_by_distance &&
 	   (src->type&battle_config.skillrange_by_distance)
@@ -3208,6 +3208,14 @@ int battle_range_type(struct block_list *src, struct block_list *target, uint16 
 			return BF_SHORT;
 		return BF_LONG;
 	}
+
+	if(skill_id == SR_GATEOFHELL) {
+		if (skill_lv < 5)
+			return BF_SHORT;
+		else
+			return BF_LONG;
+	}
+
 	//based on used skill's range
 	if(skill_get_range2(src, skill_id, skill_lv) < 5)
 		return BF_SHORT;
@@ -4426,8 +4434,11 @@ struct Damage battle_calc_weapon_attack(struct block_list *src,struct block_list
 		if(!sd)
 			hitrate = cap_value(hitrate, 5, 95);
 #endif
-		if(rnd()%100 >= hitrate)
+		if(rnd()%100 >= hitrate) {
 			wd.dmg_lv = ATK_FLEE;
+			if (skill_id == SR_GATEOFHELL)
+				flag.hit = 1;/* will hit with the special */
+		}
 		else
 			flag.hit = 1;
 	}   //End hit/miss calculation
@@ -4629,6 +4640,15 @@ struct Damage battle_calc_weapon_attack(struct block_list *src,struct block_list
 			}
 	#endif
 			switch(skill_id){
+				case SR_GATEOFHELL:
+	#if VERSION == 1
+				RE_SKILL_REDUCTION();
+	#endif
+				if(wd.dmg_lv != ATK_FLEE)
+					ATK_RATE(battle_calc_skillratio(BF_WEAPON, src, target, skill_id, skill_lv, skillratio, wflag));
+				else
+					wd.dmg_lv = ATK_DEF;
+				break;
 	#if VERSION == 1
 				case NJ_TATAMIGAESHI:
 						ATK_RATE(200);
@@ -6729,7 +6749,7 @@ void brAthena_report(char *date, char *time_c)
 	enum config_table {
 	    C_CIRCULAR_AREA         = 0x0001,
 	    C_CELLNOSTACK           = 0x0002,
-	    C_BETA_THREAD_TEST      = 0x0004,
+	    C_CONSOLE_INPUT	    = 0x0004,
 	    C_SCRIPT_CALLFUNC_CHECK = 0x0008,
 	    C_OFFICIAL_WALKPATH     = 0x0010,
 	    C_VERSION               = 0x0020,
@@ -6760,8 +6780,8 @@ void brAthena_report(char *date, char *time_c)
 	config |= C_CELLNOSTACK;
 #endif
 
-#ifdef BETA_THREAD_TEST
-	config |= C_BETA_THREAD_TEST;
+#ifdef CONSOLE_INPUT
+	config |= C_CONSOLE_INPUT;
 #endif
 
 #ifdef SCRIPT_CALLFUNC_CHECK
