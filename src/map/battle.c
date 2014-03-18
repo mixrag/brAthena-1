@@ -820,9 +820,9 @@ int64 battle_calc_masteryfix(struct block_list *src, struct block_list *target, 
 	if(skill_id != MC_CARTREVOLUTION && (skill2_lv=pc_checkskill(sd,BS_HILTBINDING)) > 0)
 		damage += 4;
 
-	if(sd->status.party_id && (skill_lv=pc_checkskill(sd,TK_POWER)) > 0) {
+	if(sd->status.party_id && (skill2_lv=pc_checkskill(sd,TK_POWER)) > 0) {
 		if((i = party_foreachsamemap(party_sub_count, sd, 0)) > 1)
-			damage += 2 * skill_lv * i * (damage /*+ unknown value*/)  / 100 /*+ unknown value*/;
+			damage += 2 * skill2_lv * i * (damage /*+ unknown value*/)  / 100 /*+ unknown value*/;
 	}
 #else
 	if(skill_id != ASC_BREAKER && weapon) // Adv Katar Mastery is does not applies to ASC_BREAKER, but other masteries DO apply >_>
@@ -5297,20 +5297,22 @@ void battle_reflect_damage(struct block_list *target, struct block_list *src, st
 		sc = NULL;
 
 	if(sc) {
-
-		 if(sc->data[SC_CRESCENTELBOW] && !is_boss(src) && rnd()%100 < sc->data[SC_CRESCENTELBOW]->val2 ){
-			//ATK [{(Target HP / 100) x Skill Level} x Caster Base Level / 125] % + [Received damage x {1 + (Skill Level x 0.2)}]
-			int ratio = (status_get_hp(src) / 100) * sc->data[SC_CRESCENTELBOW]->val1 * status->get_lv(target) / 125;
-			if (ratio > 5000) ratio = 5000; // Maximum of 5000% ATK
-			rdamage = rdamage * ratio / 100 + (damage) * (10 + sc->data[SC_CRESCENTELBOW]->val1 * 20 / 10) / 10;
-			skill_blown(target, src, skill_get_blewcount(SR_CRESCENTELBOW_AUTOSPELL, sc->data[SC_CRESCENTELBOW]->val1), unit_getdir(src), 0);
-			clif_skill_damage(target, src,tick, status_get_amotion(src), 0, rdamage,
-				1, SR_CRESCENTELBOW_AUTOSPELL, sc->data[SC_CRESCENTELBOW]->val1, 6); // This is how official does
-			clif->delay_damage(tick + delay,src, target,status_get_amotion(src)+1000, 0, rdamage/10, 1, 0);
-			status->damage(src, target, status->damage(target, src, rdamage, 0, 0, 1) / 10, 0, 0, 1);
-			status_change_end(target, SC_CRESCENTELBOW, INVALID_TIMER);
-			return; // Just put here to minimize redundancy
-	 }
+		if(wd->flag & BF_SHORT && !(skill_get_inf(skill_id) & (INF_GROUND_SKILL | INF_SELF_SKILL))) {
+			if(sc->data[SC_CRESCENTELBOW] && !is_boss(src) && rnd()%100 < sc->data[SC_CRESCENTELBOW]->val2 ){
+				//ATK [{(Target HP / 100) x Skill Level} x Caster Base Level / 125] % + [Received damage x {1 + (Skill Level x 0.2)}]
+				int ratio = (status_get_hp(src) / 100) * sc->data[SC_CRESCENTELBOW]->val1 * status->get_lv(target) / 125;
+				if(ratio > 5000) ratio = 5000; // Maximum of 5000% ATK
+				rdamage = rdamage * ratio / 100 + (damage) * (10 + sc->data[SC_CRESCENTELBOW]->val1 * 20 / 10) / 10;
+				skill_blown(target, src, skill_get_blewcount(SR_CRESCENTELBOW_AUTOSPELL, sc->data[SC_CRESCENTELBOW]->val1), unit_getdir(src), 0);
+				clif_skill_damage(target, src, tick, status_get_amotion(src), 0, rdamage,
+						   1, SR_CRESCENTELBOW_AUTOSPELL, sc->data[SC_CRESCENTELBOW]->val1, 6); // This is how official does
+				clif->delay_damage(tick + delay, src, target,status_get_amotion(src)+1000,0, rdamage/10, 1, 0);
+				status->damage(src, target, status->damage(target, src, rdamage, 0, 0, 1)/10, 0, 0, 1);
+				status_change_end(target, SC_CRESCENTELBOW, INVALID_TIMER);
+				/* shouldn't this trigger skill->additional_effect? */
+				return; // Just put here to minimize redundancy
+			}
+		}
 
 	if(wd->flag & BF_SHORT) {
 			if(!is_boss(src)) {
@@ -5363,10 +5365,10 @@ void battle_reflect_damage(struct block_list *target, struct block_list *src, st
 				if( sc->data[SC_REFLECTSHIELD] && skill_id != WS_CARTTERMINATION ) {
 					NORMALIZE_RDAMAGE(damage * sc->data[SC_REFLECTSHIELD]->val2 / 100);
 
-#ifndef RENEWAL
+#if VERSION != 1
 					rdelay = clif->delay_damage(tick+delay,src, src, status_get_amotion(src), status_get_dmotion(src), rdamage, 1, 4);
 #else
-					rdelay = clif->skill_damage(src, src, tick, delay, status_get_dmotion(src), rdamage, 1, CR_REFLECTSHIELD, 1, 4);
+					rdelay = clif_skill_damage(src, src, tick, delay, status_get_dmotion(src), rdamage, 1, CR_REFLECTSHIELD, 1, 4);
 #endif
 					/* is this right? rdamage as both left and right? */
 					if(tsd)
