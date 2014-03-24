@@ -1689,7 +1689,7 @@ int map_quit(struct map_session_data *sd) {
 		npc->event_dequeue(sd);
 
 	if(sd->bg_id && !sd->bg_queue.arena) /* TODO: dump this chunk after bg_queue is fully enabled */
-		bg_team_leave(sd,1);
+		bg_team_leave(sd,BGTL_QUIT);
 
 	if(sd->state.autotrade && runflag != MAPSERVER_ST_SHUTDOWN && !raChSys.closing)
 		pc_autotrade_update(sd,PAUC_REMOVE);
@@ -5633,7 +5633,6 @@ int do_init(int argc, char *argv[])
 
 	map_load_defaults();
 
-
 	for(i = 1; i < argc ; i++) {
 		const char *arg = argv[i];
 
@@ -5699,7 +5698,6 @@ int do_init(int argc, char *argv[])
 		}
 	}
 
-
 	map->config_read(map->MAP_CONF_NAME);
 	CREATE(map->list,struct map_data,map->count);
 	map->count = 0;
@@ -5753,6 +5751,9 @@ int do_init(int argc, char *argv[])
 	ers_chunk_size(map->flooritem_ers, 100);
 
 	map->sql_init();
+
+	Sql_Update_Check(map->mysql_handle); // Verifica atualizações faltantes
+
 	if(logs->config.sql_logs)
 		logs->sql_init();
 
@@ -5794,7 +5795,6 @@ int do_init(int argc, char *argv[])
 	do_init_unit();
 	do_init_battleground();
 	vending->init();
-
 
 	npc->event_do_oninit();  // Init npcs (OnInit)
 	npc->market_fromsql(); /* after OnInit */
